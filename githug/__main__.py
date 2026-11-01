@@ -8,11 +8,13 @@ import threading
 import tkinter as tk
 from tkinter import ttk, filedialog, messagebox, simpledialog
 from .core import Project
+from .terminal import open_powershell
+from . import __version__
 
 class App:
     def __init__(self, window):
         self.window = window
-        window.title('GitHug — 履歴から、安心して試す')
+        window.title(f'GitHug {__version__} — 履歴から、安心して試す')
         window.geometry('1360x850')
         window.minsize(950, 620)
         self.config_path = Path(os.environ.get('APPDATA', Path.home() / '.config')) / 'GitHug' / 'settings.json'
@@ -58,8 +60,10 @@ class App:
         self.tabs.add(folders, text='PCのフォルダー')
         ttk.Label(folders, text='作業フォルダーは登録だけ。再現フォルダーは毎回新しく作ります。').pack(anchor='w', pady=8)
         self.folders = self.table(folders, ('kind', 'path', 'sha'), ('種類', '保存場所', '元の履歴'))
+        self.folders.bind('<Button-3>', self.folder_menu)
         ttk.Button(folders, text='既存の作業フォルダーを登録', command=self.register_folder).pack(side='left', padx=4)
         ttk.Button(folders, text='選んだフォルダーを開く', command=self.open_folder).pack(side='left', padx=4)
+        ttk.Button(folders, text='PowerShellで開く／コマンドを実行', command=self.command_dialog).pack(side='left', padx=4)
         self.populate_projects()
         window.after(100, self.poll)
 
@@ -218,6 +222,57 @@ class App:
         path = self.folders.item(items[0], 'values')[1]
         if os.name == 'nt': os.startfile(path)
         else: subprocess.Popen(['xdg-open', path])
+
+    def folder_menu(self, event):
+        item = self.folders.identify_row(event.y)
+        if not item: return
+        self.folders.selection_set(item)
+        menu = tk.Menu(self.window, tearoff=False)
+        menu.add_command(label='フォルダーを開く', command=self.open_folder)
+        menu.add_command(label='PowerShellで開く／コマンドを実行', command=self.command_dialog)
+        try:
+            menu.tk_popup(event.x_root, event.y_root)
+        finally:
+            menu.grab_release()
+
+    def command_dialog(self):
+        items = self.folders.selection()
+        if not items:
+            messagebox.showinfo('フォルダーを選択', 'PCのフォルダー一覧から、作業場所を選んでください。')
+            return
+        # Capture the selected directory now; later project/selection changes cannot redirect execution.
+        folder = self.folders.item(items[0], 'values')[1]
+        popup = tk.Toplevel(self.window)
+        popup.title('PowerShellで開く／コマンドを実行')
+        popup.geometry('820x520')
+        popup.minsize(600, 360)
+        ttk.Label(popup, text='作業場所: ' + folder, padding=12, wraplength=760).pack(anchor='w')
+        ttk.Label(popup, text='実行するコマンドを貼り付けてください（複数行可）。空欄ならPowerShellを開くだけです。',
+                  padding=(12, 0), wraplength=760).pack(anchor='w')
+        editor_frame = ttk.Frame(popup, padding=12)
+        editor_frame.pack(fill='both', expand=True)
+        editor = tk.Text(editor_frame, wrap='none', undo=True, font=('Consolas', 11))
+        vertical = ttk.Scrollbar(editor_frame, orient='vertical', command=editor.yview)
+        horizontal = ttk.Scrollbar(editor_frame, orient='horizontal', command=editor.xview)
+        editor.configure(yscrollcommand=vertical.set, xscrollcommand=horizontal.set)
+        horizontal.pack(side='bottom', fill='x')
+        vertical.pack(side='right', fill='y')
+        editor.pack(fill='both', expand=True)
+        ttk.Label(popup, text='実行後もPowerShellは開いたままです。入力したコマンドは保存しません。',
+                  padding=(12, 0)).pack(anchor='w')
+        buttons = ttk.Frame(popup, padding=12)
+        buttons.pack(fill='x')
+        def launch():
+            try:
+                open_powershell(folder, editor.get('1.0', 'end-1c'))
+            except Exception as exc:
+                messagebox.showerror('PowerShellを開けませんでした', str(exc), parent=popup)
+                return
+            self.status.set('PowerShellを開きました: ' + folder)
+            popup.destroy()
+        ttk.Button(buttons, text='PowerShellを開いて実行', command=launch).pack(side='right')
+        ttk.Button(buttons, text='キャンセル', command=popup.destroy).pack(side='right', padx=8)
+        editor.focus_set()
 
     def compare(self):
         items = self.history.selection()
