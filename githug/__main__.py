@@ -246,12 +246,15 @@ class App:
         popup.title('PowerShellで開く／コマンドを実行')
         popup.geometry('820x520')
         popup.minsize(600, 360)
-        ttk.Label(popup, text='作業場所: ' + folder, padding=12, wraplength=760).pack(anchor='w')
+        popup.columnconfigure(0, weight=1)
+        popup.rowconfigure(2, weight=1)
+        ttk.Label(popup, text='作業場所: ' + folder, padding=12, wraplength=560).grid(
+            row=0, column=0, sticky='ew')
         ttk.Label(popup, text='実行するコマンドを貼り付けてください（複数行可）。空欄ならPowerShellを開くだけです。',
-                  padding=(12, 0), wraplength=760).pack(anchor='w')
+                  padding=(12, 0), wraplength=560).grid(row=1, column=0, sticky='ew')
         editor_frame = ttk.Frame(popup, padding=12)
-        editor_frame.pack(fill='both', expand=True)
-        editor = tk.Text(editor_frame, wrap='none', undo=True, font=('Consolas', 11))
+        editor_frame.grid(row=2, column=0, sticky='nsew')
+        editor = tk.Text(editor_frame, width=1, height=1, wrap='none', undo=True, font=('Consolas', 11))
         vertical = ttk.Scrollbar(editor_frame, orient='vertical', command=editor.yview)
         horizontal = ttk.Scrollbar(editor_frame, orient='horizontal', command=editor.xview)
         editor.configure(yscrollcommand=vertical.set, xscrollcommand=horizontal.set)
@@ -259,9 +262,9 @@ class App:
         vertical.pack(side='right', fill='y')
         editor.pack(fill='both', expand=True)
         ttk.Label(popup, text='実行後もPowerShellは開いたままです。入力したコマンドは保存しません。',
-                  padding=(12, 0)).pack(anchor='w')
+                  padding=(12, 0), wraplength=560).grid(row=3, column=0, sticky='ew')
         buttons = ttk.Frame(popup, padding=12)
-        buttons.pack(fill='x')
+        buttons.grid(row=4, column=0, sticky='ew')
         def launch():
             try:
                 open_powershell(folder, editor.get('1.0', 'end-1c'))
