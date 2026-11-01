@@ -8,6 +8,9 @@ import subprocess
 from datetime import datetime
 from uuid import uuid4
 
+class ComparisonCancelled(Exception):
+    pass
+
 class GitError(RuntimeError):
     pass
 
@@ -76,17 +79,24 @@ class Project:
     def snapshots(self):
         return [json.loads(p.read_text(encoding='utf-8')) for p in sorted((self.base / 'records').glob('*.json'), reverse=True)]
 
-    def compare(self, sha, folder):
+    def compare(self, sha, folder, progress=None, cancelled=None):
         """Compare tracked commit contents with a folder without modifying that folder."""
         folder = Path(folder)
         if not folder.is_dir():
             raise ValueError('比較するフォルダーが見つかりません。')
-        entries = git('ls-tree', '-r', '-z', sha, cwd=self.cache).split('\0')
+        def report(stage, count, total, name):
+            if cancelled and cancelled():
+                raise ComparisonCancelled()
+            if progress:
+                progress(stage, count, total, name)
+        report('履歴のファイル一覧を取得', 0, None, '')
+        entries = list(filter(None, git('ls-tree', '-r', '-z', sha, cwd=self.cache).split('\0')))
         differences = []
         known = set()
-        for entry in filter(None, entries):
+        for index, entry in enumerate(entries):
             header, name = entry.split('\t', 1)
             mode, kind, blob = header.split()
+            report('履歴と内容を比較', index, len(entries), name)
             known.add(name)
             path = folder / name
             if kind != 'blob' or mode == '120000':
@@ -97,10 +107,16 @@ class Project:
                 differences.append(('種類が異なる', name))
             elif git('hash-object', '--no-filters', '--', path.absolute(), cwd=self.cache).strip() != blob:
                 differences.append(('内容が異なる', name))
+        report('履歴と内容を比較', len(entries), len(entries), '')
+        scanned = 0
         for parent, dirs, files in os.walk(folder, followlinks=False):
+            report('手元だけのファイルを確認', scanned, None, str(Path(parent).relative_to(folder)))
             dirs[:] = [d for d in dirs if d != '.git' and not (Path(parent) / d).is_symlink()]
             for name in files:
                 relative = (Path(parent) / name).relative_to(folder).as_posix()
+                scanned += 1
+                report('手元だけのファイルを確認', scanned, None, relative)
                 if relative not in known:
                     differences.append(('手元のみ', relative))
+        report('比較完了', scanned, None, '')
         return differences

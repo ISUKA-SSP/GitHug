@@ -1,7 +1,7 @@
 import tempfile
 import unittest
 from pathlib import Path
-from githug.core import Project, git, validate_url
+from githug.core import Project, git, validate_url, ComparisonCancelled
 
 class SnapshotTests(unittest.TestCase):
     def test_url_rejects_commands_and_other_hosts(self):
@@ -32,6 +32,13 @@ class SnapshotTests(unittest.TestCase):
             self.assertEqual(project.compare(sha, first), [('内容が異なる', 'hello.txt')])
             self.assertEqual((first / 'hello.txt').read_text(), 'my edit')
             self.assertEqual(len(project.snapshots()), 2)
+            progress = []
+            project.compare(sha, first, progress=lambda *args: progress.append(args))
+            self.assertTrue(any(row[0] == '履歴と内容を比較' and row[2] == 1 for row in progress))
+            self.assertEqual(progress[-1][0], '比較完了')
+            with self.assertRaises(ComparisonCancelled):
+                project.compare(sha, first, cancelled=lambda: True)
+            self.assertEqual((first / 'hello.txt').read_text(), 'my edit')
             with self.assertRaises(ValueError): project.snapshot('--all')
 
 if __name__ == '__main__': unittest.main()

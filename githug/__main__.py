@@ -5,9 +5,10 @@ from pathlib import Path
 import queue
 import subprocess
 import threading
+import time
 import tkinter as tk
 from tkinter import ttk, filedialog, messagebox, simpledialog
-from .core import Project
+from .core import Project, ComparisonCancelled
 from .terminal import open_powershell
 from . import __version__
 
@@ -282,15 +283,84 @@ class App:
         if self.busy or not items: return
         folder = filedialog.askdirectory(title='選んだ履歴と比較するフォルダー')
         if not folder: return
+        project, sha = self.project, items[0]
+        cancel = threading.Event()
+        lock = threading.Lock()
+        state = {'stage': '比較の準備', 'count': 0, 'total': None, 'name': '', 'finished': False}
+        started = time.monotonic()
+        progress_window = tk.Toplevel(self.window)
+        progress_window.title('ファイルを比較しています')
+        progress_window.geometry('650x240')
+        progress_window.minsize(500, 240)
+        progress_window.columnconfigure(0, weight=1)
+        progress_window.rowconfigure(2, weight=1)
+        label = tk.StringVar()
+        ttk.Label(progress_window, textvariable=label, padding=12, wraplength=470).grid(row=0, column=0, sticky='ew')
+        bar = ttk.Progressbar(progress_window, mode='indeterminate')
+        bar.grid(row=1, column=0, sticky='ew', padx=12, pady=8)
+        bar.start(40)
+        activity = tk.StringVar()
+        ttk.Label(progress_window, textvariable=activity, padding=12, wraplength=470).grid(row=2, column=0, sticky='nsew')
+        def stop():
+            cancel.set()
+            stop_button.configure(state='disabled')
+        stop_button = ttk.Button(progress_window, text='中止', command=stop)
+        stop_button.grid(row=3, column=0, pady=12)
+        progress_window.protocol('WM_DELETE_WINDOW', stop)
+        def update_progress():
+            if not progress_window.winfo_exists(): return
+            with lock:
+                current = dict(state)
+            if current['finished']:
+                bar.stop()
+                progress_window.destroy()
+                return
+            count = str(current['count']) + (('/' + str(current['total'])) if current['total'] is not None else '')
+            elapsed = int(time.monotonic() - started)
+            title = '中止を待っています（処理中のファイルが終わるまでお待ちください）' if cancel.is_set() else current['stage']
+            label.set(f"{title}  {count} 件  ／ 経過 {elapsed} 秒")
+            activity.set(current['name'][-160:])
+            self.status.set(f"{title}  {count} 件 ／ 経過 {elapsed} 秒")
+            progress_window.after(150, update_progress)
+        def report(stage, count, total, name):
+            with lock:
+                state.update(stage=stage, count=count, total=total, name=name)
+        def task():
+            try:
+                return project.compare(sha, folder, progress=report, cancelled=cancel.is_set)
+            except ComparisonCancelled:
+                return None
+            finally:
+                with lock:
+                    state['finished'] = True
         def done(rows):
+            if progress_window.winfo_exists():
+                bar.stop()
+                progress_window.destroy()
+            if rows is None:
+                self.status.set('比較を中止しました。ファイルは変更していません。')
+                return
             popup = tk.Toplevel(self.window)
             popup.title('ファイルの比較 — 書き換えは行いません')
             popup.geometry('900x600')
-            ttk.Label(popup, text='改行形式の違いや、無視対象のファイルも含む比較です。', padding=10).pack()
+            summary = tk.StringVar(value=f'違い {len(rows)} 件。結果を表示しています…')
+            ttk.Label(popup, textvariable=summary, padding=10).pack()
+            ttk.Label(popup, text='改行形式の違いや、無視対象のファイルも含む比較です。').pack()
             table = self.table(popup, ('state', 'file'), ('状態', 'ファイル'))
-            for row in rows: table.insert('', 'end', values=row)
-            if not rows: table.insert('', 'end', values=('同じ内容です', ''))
-        self.run('手元のファイルを比較しています…', lambda: self.project.compare(items[0], folder), done)
+            def append_batch(offset=0):
+                if not popup.winfo_exists(): return
+                for row in rows[offset:offset+200]:
+                    table.insert('', 'end', values=row)
+                next_offset = offset + 200
+                if next_offset < len(rows):
+                    summary.set(f'違い {len(rows)} 件。表示済み {next_offset} 件…')
+                    popup.after(10, lambda: append_batch(next_offset))
+                else:
+                    summary.set(f'違い {len(rows)} 件 ／ 比較時間 {int(time.monotonic() - started)} 秒')
+                    if not rows: table.insert('', 'end', values=('同じ内容です', ''))
+            append_batch()
+        self.run('手元のファイルを比較しています…', task, done)
+        update_progress()
 
 if __name__ == '__main__':
     root = tk.Tk()
