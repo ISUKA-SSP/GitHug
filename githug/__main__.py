@@ -12,13 +12,15 @@ from .core import Project, ComparisonCancelled
 from .terminal import open_powershell
 from . import __version__
 from .listing import date_value, visible_rows
+from .theme import apply_dark_theme
 
 class App:
     def __init__(self, window):
         self.window = window
+        self.style = apply_dark_theme(window)
         window.title(f'GitHug {__version__} — 履歴から、安心して試す')
-        window.geometry('1360x850')
-        window.minsize(950, 620)
+        window.geometry('1360x900')
+        window.minsize(1050, 760)
         self.config_path = Path(os.environ.get('APPDATA', Path.home() / '.config')) / 'GitHug' / 'settings.json'
         try:
             self.config = json.loads(self.config_path.read_text(encoding='utf-8'))
@@ -48,43 +50,55 @@ class App:
         self.projects.bind('<<ListboxSelect>>', self.select_project)
         right = ttk.Frame(split)
         split.add(right, weight=5)
-        self.tabs = ttk.Notebook(right)
-        self.tabs.pack(fill='both', expand=True)
-        history_tab = ttk.Frame(self.tabs, padding=8)
-        self.tabs.add(history_tab, text='GitHubの履歴')
-        ttk.Label(history_tab, text='履歴を選択 → 右クリックで、この時点を新しいフォルダーに再現できます。').pack(anchor='w', pady=8)
-        self.history_query, self.history_count = self.search_bar(history_tab, '履歴を検索（説明・枝名・履歴番号・日時）')
-        self.history = self.table(history_tab, ('date', 'refs', 'message'), ('更新日時', '作業の枝・目印', '変更の説明'), tree=True)
+        self.sections = ttk.Panedwindow(right, orient='vertical')
+        self.sections.pack(fill='both', expand=True)
+        history_tab = ttk.Frame(self.sections, padding=8)
+        history_tab.columnconfigure(0, weight=1)
+        history_tab.rowconfigure(3, weight=1, minsize=70)
+        self.sections.add(history_tab, weight=3)
+        ttk.Label(history_tab, text='GitHubの履歴', style='Heading.TLabel').grid(row=0, column=0, sticky='w')
+        ttk.Label(history_tab, text='履歴を選択 → 右クリックで新しいフォルダーに再現', style='Muted.TLabel').grid(row=1, column=0, sticky='w', pady=4)
+        self.history_query, self.history_count = self.search_bar(history_tab, '履歴を検索（説明・枝名・履歴番号・日時）', grid_row=2)
+        self.history = self.table(history_tab, ('date', 'refs', 'message'), ('更新日時', '作業の枝・目印', '変更の説明'), tree=True, grid_row=3)
         self.history.bind('<<TreeviewSelect>>', self.detail)
         self.history.bind('<Button-3>', self.menu)
         self.selection = tk.StringVar(value='')
-        ttk.Label(history_tab, textvariable=self.selection, wraplength=850).pack(fill='x', pady=8)
+        ttk.Label(history_tab, textvariable=self.selection, wraplength=850, style='Muted.TLabel').grid(row=4, column=0, sticky='ew', pady=4)
         controls = ttk.Frame(history_tab)
-        controls.pack(fill='x')
+        controls.grid(row=5, column=0, sticky='ew')
         ttk.Button(controls, text='この時点を新しいフォルダーに再現', command=self.reproduce).pack(side='left', padx=4)
         ttk.Button(controls, text='作業フォルダーと比較', command=self.compare).pack(side='left', padx=4)
-        folders = ttk.Frame(self.tabs, padding=8)
-        self.tabs.add(folders, text='PCのフォルダー')
-        ttk.Label(folders, text='再現フォルダーは毎回新規作成。登録した作業用フォルダーは「元の履歴」「再現した日時」が空欄です。').pack(anchor='w', pady=8)
-        self.folder_query, self.folder_count = self.search_bar(folders, 'フォルダーを検索（保存場所・再現日時・状態・履歴番号）')
-        self.folders = self.table(folders, ('kind', 'path', 'sha', 'created', 'state'), ('種類', '保存場所', '元の履歴', '再現した日時', '状態'))
+        folders = ttk.Frame(self.sections, padding=8)
+        folders.columnconfigure(0, weight=1)
+        folders.rowconfigure(3, weight=1, minsize=70)
+        self.sections.add(folders, weight=2)
+        ttk.Label(folders, text='PCのフォルダー', style='Heading.TLabel').grid(row=0, column=0, sticky='w')
+        ttk.Label(folders, text='再現フォルダーは毎回新規作成。登録した作業用は履歴・再現日時が空欄です。', style='Muted.TLabel').grid(row=1, column=0, sticky='w', pady=4)
+        self.folder_query, self.folder_count = self.search_bar(folders, 'フォルダーを検索（保存場所・再現日時・状態・履歴番号）', grid_row=2)
+        self.folders = self.table(folders, ('kind', 'path', 'sha', 'created', 'state'), ('種類', '保存場所', '元の履歴', '再現した日時', '状態'), grid_row=3)
         self.folders.configure(displaycolumns=('sha', 'created', 'state', 'path'))
         self.folders.bind('<Button-3>', self.folder_menu)
-        self.tabs.bind('<<NotebookTabChanged>>', self.check_folder_tab)
-        ttk.Button(folders, text='既存の作業フォルダーを登録', command=self.register_folder).pack(side='left', padx=4)
-        ttk.Button(folders, text='選んだフォルダーを開く', command=self.open_folder).pack(side='left', padx=4)
-        ttk.Button(folders, text='PowerShellで開く／コマンドを実行', command=self.command_dialog).pack(side='left', padx=4)
-        ttk.Button(folders, text='一覧を更新', command=self.check_folder_tab).pack(side='left', padx=4)
+        self.window.bind('<FocusIn>', self.on_window_focus, add='+')
+        folder_controls = ttk.Frame(folders)
+        folder_controls.grid(row=4, column=0, sticky='ew', pady=(6, 0))
+        ttk.Button(folder_controls, text='作業フォルダーを登録', command=self.register_folder).pack(side='left', padx=4)
+        ttk.Button(folder_controls, text='フォルダーを開く', command=self.open_folder).pack(side='left', padx=4)
+        ttk.Button(folder_controls, text='PowerShell／コマンド', command=self.command_dialog).pack(side='left', padx=4)
+        ttk.Button(folder_controls, text='一覧を更新', command=self.check_folder_tab).pack(side='left', padx=4)
         self.configure_sort('history', self.history, ('#0', 'date', 'refs', 'message'))
         self.configure_sort('folders', self.folders, ('sha', 'created', 'state', 'path'))
         self.history_query.trace_add('write', lambda *_: self.render_history())
         self.folder_query.trace_add('write', lambda *_: self.render_folders())
         self.populate_projects()
+        window.after(150, lambda: self.sections.sashpos(0, int(self.sections.winfo_height() * 0.55)))
         window.after(100, self.poll)
 
-    def search_bar(self, parent, description):
+    def search_bar(self, parent, description, grid_row=None):
         frame = ttk.Frame(parent)
-        frame.pack(fill='x', pady=(0, 8))
+        if grid_row is None:
+            frame.pack(fill='x', pady=(0, 8))
+        else:
+            frame.grid(row=grid_row, column=0, sticky='ew', pady=(0, 8))
         ttk.Label(frame, text=description).pack(anchor='w')
         query = tk.StringVar()
         count = tk.StringVar()
@@ -128,10 +142,13 @@ class App:
     def render_folders(self):
         self.render_rows('folders', self.folders, self.folder_rows, self.folder_query, self.folder_count)
 
-    def table(self, parent, columns, labels, tree=False):
+    def table(self, parent, columns, labels, tree=False, grid_row=None):
         frame = ttk.Frame(parent)
-        frame.pack(fill='both', expand=True)
-        widget = ttk.Treeview(frame, columns=columns, show='tree headings' if tree else 'headings', selectmode='browse')
+        if grid_row is None:
+            frame.pack(fill='both', expand=True)
+        else:
+            frame.grid(row=grid_row, column=0, sticky='nsew')
+        widget = ttk.Treeview(frame, columns=columns, show='tree headings' if tree else 'headings', selectmode='browse', height=3)
         if tree:
             widget.heading('#0', text='履歴・合流')
             widget.column('#0', width=160)
@@ -269,6 +286,10 @@ class App:
             return '削除または移動されています'
         except OSError:
             return 'アクセスできません'
+
+    def on_window_focus(self, event):
+        if event.widget is self.window:
+            self.check_folder_tab()
 
     def check_folder_tab(self, event=None):
         if self.project and not self.busy:
