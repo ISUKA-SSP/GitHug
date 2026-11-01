@@ -1,4 +1,5 @@
 import json
+from datetime import datetime
 import os
 from pathlib import Path
 import queue
@@ -43,7 +44,7 @@ class App:
         self.tabs.pack(fill='both', expand=True)
         history_tab = ttk.Frame(self.tabs, padding=8)
         self.tabs.add(history_tab, text='GitHubの履歴')
-        ttk.Label(history_tab, text='履歴を選択 → 右クリックで、この時点を別フォルダーに再現できます。').pack(anchor='w', pady=8)
+        ttk.Label(history_tab, text='履歴を選択 → 右クリックで、この時点を新しいフォルダーに再現できます。').pack(anchor='w', pady=8)
         self.history = self.table(history_tab, ('date', 'refs', 'message'), ('更新日時', '作業の枝・目印', '変更の説明'), tree=True)
         self.history.bind('<<TreeviewSelect>>', self.detail)
         self.history.bind('<Button-3>', self.menu)
@@ -67,11 +68,14 @@ class App:
         frame.pack(fill='both', expand=True)
         widget = ttk.Treeview(frame, columns=columns, show='tree headings' if tree else 'headings', selectmode='browse')
         if tree:
-            widget.heading('#0', text='履歴の分岐')
+            widget.heading('#0', text='履歴・合流')
             widget.column('#0', width=160)
         for col, label in zip(columns, labels):
             widget.heading(col, text=label)
-            widget.column(col, width=170 if col != 'path' else 550)
+            widget.column(col, width={'path': 550, 'message': 440, 'date': 165}.get(col, 170), minwidth=100)
+        horizontal = ttk.Scrollbar(frame, orient='horizontal', command=widget.xview)
+        horizontal.pack(side='bottom', fill='x')
+        widget.configure(xscrollcommand=horizontal.set)
         scrollbar = ttk.Scrollbar(frame, orient='vertical', command=widget.yview)
         widget.configure(yscrollcommand=scrollbar.set)
         scrollbar.pack(side='right', fill='y')
@@ -156,14 +160,19 @@ class App:
     def show_history(self, records):
         self.history.delete(*self.history.get_children())
         self.records = {r['sha']: r for r in records}
-        for r in reversed(records):
+        # Dates must be compared as instants: repositories can contain mixed time zones.
+        ordered = sorted(records, key=lambda r: datetime.fromisoformat(r['date']).timestamp(), reverse=True)
+        for r in ordered:
             parents = r['parents'].split()
-            parent = parents[0] if parents and self.history.exists(parents[0]) else ''
             merge = '（合流）' if len(parents) > 1 else ''
-            self.history.insert(parent, 0, iid=r['sha'], text=r['sha'][:8] + merge,
-                                values=(r['date'], r['refs'], r['message']), open=True)
+            date = datetime.fromisoformat(r['date']).astimezone().strftime('%Y/%m/%d %H:%M')
+            self.history.insert('', 'end', iid=r['sha'], text=r['sha'][:8] + merge,
+                                values=(date, r['refs'], r['message']))
+        self.selection.set('')
+        self.history.yview_moveto(0)
+        self.history.xview_moveto(0)
         self.load_folders()
-        self.status.set(f'{len(records)}件の履歴を表示。最大400件／分岐は最初の親で表示します。')
+        self.status.set(f'{len(records)}件の履歴を新しい順に表示（最大400件）。枝の目印と、選択時の元の履歴でつながりを確認できます。')
 
     def detail(self, event=None):
         items = self.history.selection()
@@ -176,7 +185,7 @@ class App:
         if not item: return
         self.history.selection_set(item)
         menu = tk.Menu(self.window, tearoff=False)
-        menu.add_command(label='この時点を別フォルダーに再現', command=self.reproduce)
+        menu.add_command(label='この時点を新しいフォルダーに再現', command=self.reproduce)
         menu.add_command(label='作業フォルダーと比較', command=self.compare)
         menu.tk_popup(event.x_root, event.y_root)
 
