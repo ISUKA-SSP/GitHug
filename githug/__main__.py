@@ -60,11 +60,13 @@ class App:
         folders = ttk.Frame(self.tabs, padding=8)
         self.tabs.add(folders, text='PCのフォルダー')
         ttk.Label(folders, text='作業フォルダーは登録だけ。再現フォルダーは毎回新しく作ります。').pack(anchor='w', pady=8)
-        self.folders = self.table(folders, ('kind', 'path', 'sha'), ('種類', '保存場所', '元の履歴'))
+        self.folders = self.table(folders, ('kind', 'path', 'sha', 'state'), ('種類', '保存場所', '元の履歴', '状態'))
         self.folders.bind('<Button-3>', self.folder_menu)
+        self.tabs.bind('<<NotebookTabChanged>>', self.check_folder_tab)
         ttk.Button(folders, text='既存の作業フォルダーを登録', command=self.register_folder).pack(side='left', padx=4)
         ttk.Button(folders, text='選んだフォルダーを開く', command=self.open_folder).pack(side='left', padx=4)
         ttk.Button(folders, text='PowerShellで開く／コマンドを実行', command=self.command_dialog).pack(side='left', padx=4)
+        ttk.Button(folders, text='一覧を更新', command=self.check_folder_tab).pack(side='left', padx=4)
         self.populate_projects()
         window.after(100, self.poll)
 
@@ -202,12 +204,69 @@ class App:
             messagebox.showinfo('再現しました', '新しいフォルダーに保存しました。\n' + folder)
         self.run('新しいフォルダーへ再現しています…', lambda: self.project.snapshot(items[0]), done)
 
+    @staticmethod
+    def folder_state(folder):
+        try:
+            path = Path(folder)
+            if path.is_dir(): return '利用できます'
+            if path.exists(): return 'フォルダーではありません'
+            return '削除または移動されています'
+        except OSError:
+            return 'アクセスできません'
+
+    def check_folder_tab(self, event=None):
+        if self.project and not self.busy:
+            self.load_folders()
+
     def load_folders(self):
         self.folders.delete(*self.folders.get_children())
+        self.folder_records = {}
         for folder in self.current.get('work', []):
-            self.folders.insert('', 'end', values=('作業用（登録）', folder, ''))
+            self.folders.insert('', 'end', values=('作業用（登録）', folder, '', self.folder_state(folder)))
         for record in self.project.snapshots():
-            self.folders.insert('', 'end', values=('再現したフォルダー', record['folder'], record['sha'][:8]))
+            item = self.folders.insert('', 'end', values=('再現したフォルダー', record['folder'], record['sha'][:8],
+                                                        self.folder_state(record['folder'])))
+            self.folder_records[item] = record
+
+    def with_selected_folder(self, action):
+        if self.busy: return
+        items = self.folders.selection()
+        if not items:
+            messagebox.showinfo('フォルダーを選択', 'PCのフォルダー一覧から、作業場所を選んでください。')
+            return
+        item = items[0]
+        folder = self.folders.item(item, 'values')[1]
+        state = self.folder_state(folder)
+        self.folders.set(item, 'state', state)
+        if state == '利用できます':
+            action(folder)
+            return
+        if state != '削除または移動されています':
+            messagebox.showinfo('作業場所を確認', state + '\n' + folder)
+            return
+        record = self.folder_records.get(item)
+        if not record:
+            messagebox.showinfo('作業場所が見つかりません',
+                                'フォルダーが削除、または移動されています。\n' + folder +
+                                '\n\n作業用フォルダーは元の履歴が不明なため自動で再現できません。移動先を登録してください。')
+            return
+        project, sha = self.project, record['sha']
+        if not messagebox.askyesno('再現フォルダーが見つかりません',
+                'フォルダーが削除、または移動されています。\n' + folder +
+                '\n\n同じ履歴（' + sha[:8] + '）から、新しいフォルダーに再現しますか？' +
+                '\n再現後に手元で加えた変更は復元されません。'):
+            return
+        def done(new_folder):
+            self.load_folders()
+            for new_item, new_record in self.folder_records.items():
+                if new_record['folder'] == new_folder:
+                    self.folders.selection_set(new_item)
+                    self.folders.see(new_item)
+                    break
+            self.status.set('同じ履歴から新しく再現しました: ' + new_folder)
+            messagebox.showinfo('再現しました', '新しいフォルダーを作成しました。\n' + new_folder)
+            action(new_folder)
+        self.run('同じ履歴から新しいフォルダーへ再現しています…', lambda: project.snapshot(sha), done)
 
     def register_folder(self):
         if self.busy or not self.project: return
@@ -218,11 +277,14 @@ class App:
             self.load_folders()
 
     def open_folder(self):
-        items = self.folders.selection()
-        if not items: return
-        path = self.folders.item(items[0], 'values')[1]
-        if os.name == 'nt': os.startfile(path)
-        else: subprocess.Popen(['xdg-open', path])
+        self.with_selected_folder(self.open_folder_path)
+
+    def open_folder_path(self, path):
+        try:
+            if os.name == 'nt': os.startfile(path)
+            else: subprocess.Popen(['xdg-open', path])
+        except OSError as exc:
+            messagebox.showinfo('フォルダーを開けませんでした', str(exc))
 
     def folder_menu(self, event):
         item = self.folders.identify_row(event.y)
@@ -237,12 +299,9 @@ class App:
             menu.grab_release()
 
     def command_dialog(self):
-        items = self.folders.selection()
-        if not items:
-            messagebox.showinfo('フォルダーを選択', 'PCのフォルダー一覧から、作業場所を選んでください。')
-            return
-        # Capture the selected directory now; later project/selection changes cannot redirect execution.
-        folder = self.folders.item(items[0], 'values')[1]
+        self.with_selected_folder(self.command_dialog_for_folder)
+
+    def command_dialog_for_folder(self, folder):
         popup = tk.Toplevel(self.window)
         popup.title('PowerShellで開く／コマンドを実行')
         popup.geometry('820x520')
