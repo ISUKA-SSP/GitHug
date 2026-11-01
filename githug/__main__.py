@@ -11,6 +11,7 @@ from tkinter import ttk, filedialog, messagebox, simpledialog
 from .core import Project, ComparisonCancelled
 from .terminal import open_powershell
 from . import __version__
+from .listing import date_value, visible_rows
 
 class App:
     def __init__(self, window):
@@ -25,6 +26,10 @@ class App:
             self.config = {'root': '', 'projects': []}
         self.project = None
         self.busy = False
+        self.records = {}
+        self.history_rows = []
+        self.folder_rows = []
+        self.sort_options = {'history': ('date', True), 'folders': ('created', True)}
         self.events = queue.Queue()
         toolbar = ttk.Frame(window, padding=12)
         toolbar.pack(fill='x')
@@ -48,6 +53,7 @@ class App:
         history_tab = ttk.Frame(self.tabs, padding=8)
         self.tabs.add(history_tab, text='GitHubの履歴')
         ttk.Label(history_tab, text='履歴を選択 → 右クリックで、この時点を新しいフォルダーに再現できます。').pack(anchor='w', pady=8)
+        self.history_query, self.history_count = self.search_bar(history_tab, '履歴を検索（説明・枝名・履歴番号・日時）')
         self.history = self.table(history_tab, ('date', 'refs', 'message'), ('更新日時', '作業の枝・目印', '変更の説明'), tree=True)
         self.history.bind('<<TreeviewSelect>>', self.detail)
         self.history.bind('<Button-3>', self.menu)
@@ -60,15 +66,66 @@ class App:
         folders = ttk.Frame(self.tabs, padding=8)
         self.tabs.add(folders, text='PCのフォルダー')
         ttk.Label(folders, text='作業フォルダーは登録だけ。再現フォルダーは毎回新しく作ります。').pack(anchor='w', pady=8)
-        self.folders = self.table(folders, ('kind', 'path', 'sha', 'state'), ('種類', '保存場所', '元の履歴', '状態'))
+        self.folder_query, self.folder_count = self.search_bar(folders, 'フォルダーを検索（保存場所・再現日時・状態・履歴番号）')
+        self.folders = self.table(folders, ('kind', 'path', 'sha', 'created', 'state'), ('種類', '保存場所', '元の履歴', '再現した日時', '状態'))
         self.folders.bind('<Button-3>', self.folder_menu)
         self.tabs.bind('<<NotebookTabChanged>>', self.check_folder_tab)
         ttk.Button(folders, text='既存の作業フォルダーを登録', command=self.register_folder).pack(side='left', padx=4)
         ttk.Button(folders, text='選んだフォルダーを開く', command=self.open_folder).pack(side='left', padx=4)
         ttk.Button(folders, text='PowerShellで開く／コマンドを実行', command=self.command_dialog).pack(side='left', padx=4)
         ttk.Button(folders, text='一覧を更新', command=self.check_folder_tab).pack(side='left', padx=4)
+        self.configure_sort('history', self.history, ('#0', 'date', 'refs', 'message'))
+        self.configure_sort('folders', self.folders, ('kind', 'path', 'sha', 'created', 'state'))
+        self.history_query.trace_add('write', lambda *_: self.render_history())
+        self.folder_query.trace_add('write', lambda *_: self.render_folders())
         self.populate_projects()
         window.after(100, self.poll)
+
+    def search_bar(self, parent, description):
+        frame = ttk.Frame(parent)
+        frame.pack(fill='x', pady=(0, 8))
+        ttk.Label(frame, text=description).pack(anchor='w')
+        query = tk.StringVar()
+        count = tk.StringVar()
+        ttk.Entry(frame, textvariable=query).pack(side='left', fill='x', expand=True)
+        ttk.Button(frame, text='クリア', command=lambda: query.set('')).pack(side='left', padx=6)
+        ttk.Label(frame, textvariable=count).pack(side='right')
+        return query, count
+
+    def configure_sort(self, name, table, columns):
+        table.sort_labels = {col: table.heading(col, 'text') for col in columns}
+        for col in columns:
+            table.heading(col, command=lambda col=col: self.sort_list(name, col))
+
+    def sort_list(self, name, column):
+        old_column, descending = self.sort_options[name]
+        self.sort_options[name] = (column, not descending if column == old_column else column in ('date', 'created'))
+        if name == 'history': self.render_history()
+        else: self.render_folders()
+
+    def render_rows(self, name, table, rows, query, count):
+        selected = table.selection()
+        table.delete(*table.get_children())
+        column, descending = self.sort_options[name]
+        shown = visible_rows(rows, query.get(), column, descending)
+        for row in shown:
+            table.insert('', 'end', iid=row['id'], text=row.get('text', ''), values=row['values'])
+        for col, label in table.sort_labels.items():
+            table.heading(col, text=label + ((' ▼' if descending else ' ▲') if col == column else ''))
+        if selected and table.exists(selected[0]):
+            table.selection_set(selected[0])
+            table.see(selected[0])
+        else:
+            table.yview_moveto(0)
+        count.set(f'{len(shown)} / {len(rows)} 件')
+
+    def render_history(self):
+        self.render_rows('history', self.history, self.history_rows, self.history_query, self.history_count)
+        self.selection.set('')
+        self.detail()
+
+    def render_folders(self):
+        self.render_rows('folders', self.folders, self.folder_rows, self.folder_query, self.folder_count)
 
     def table(self, parent, columns, labels, tree=False):
         frame = ttk.Frame(parent)
@@ -79,7 +136,7 @@ class App:
             widget.column('#0', width=160)
         for col, label in zip(columns, labels):
             widget.heading(col, text=label)
-            widget.column(col, width={'path': 550, 'message': 440, 'date': 165}.get(col, 170), minwidth=100)
+            widget.column(col, width={'path': 550, 'message': 440, 'date': 175, 'created': 175}.get(col, 170), minwidth=100)
         horizontal = ttk.Scrollbar(frame, orient='horizontal', command=widget.xview)
         horizontal.pack(side='bottom', fill='x')
         widget.configure(xscrollcommand=horizontal.set)
@@ -165,21 +222,19 @@ class App:
             self.run('GitHubの履歴を確認しています…', self.project.refresh, self.show_history)
 
     def show_history(self, records):
-        self.history.delete(*self.history.get_children())
         self.records = {r['sha']: r for r in records}
-        # Dates must be compared as instants: repositories can contain mixed time zones.
-        ordered = sorted(records, key=lambda r: datetime.fromisoformat(r['date']).timestamp(), reverse=True)
-        for r in ordered:
-            parents = r['parents'].split()
-            merge = '（合流）' if len(parents) > 1 else ''
-            date = datetime.fromisoformat(r['date']).astimezone().strftime('%Y/%m/%d %H:%M')
-            self.history.insert('', 'end', iid=r['sha'], text=r['sha'][:8] + merge,
-                                values=(date, r['refs'], r['message']))
-        self.selection.set('')
-        self.history.yview_moveto(0)
-        self.history.xview_moveto(0)
+        self.history_rows = []
+        for r in records:
+            date, timestamp = date_value(r['date'])
+            merge = '（合流）' if len(r['parents'].split()) > 1 else ''
+            self.history_rows.append({
+                'id': r['sha'], 'text': r['sha'][:8] + merge,
+                'values': (date, r['refs'], r['message']),
+                'search': ' '.join((r['sha'], r['parents'], date, r['date'], r['refs'], r['message'])),
+                'sort': {'#0': r['sha'], 'date': timestamp, 'refs': r['refs'].casefold(), 'message': r['message'].casefold()}})
+        self.render_history()
         self.load_folders()
-        self.status.set(f'{len(records)}件の履歴を新しい順に表示（最大400件）。枝の目印と、選択時の元の履歴でつながりを確認できます。')
+        self.status.set('履歴を取得しました（最大400件）。検索は取得済みの履歴が対象です。列見出しで並べ替えできます。')
 
     def detail(self, event=None):
         items = self.history.selection()
@@ -219,14 +274,23 @@ class App:
             self.load_folders()
 
     def load_folders(self):
-        self.folders.delete(*self.folders.get_children())
         self.folder_records = {}
-        for folder in self.current.get('work', []):
-            self.folders.insert('', 'end', values=('作業用（登録）', folder, '', self.folder_state(folder)))
+        self.folder_rows = []
+        def add(item, kind, folder, sha='', created=''):
+            state = self.folder_state(folder)
+            date, timestamp = date_value(created)
+            self.folder_rows.append({
+                'id': item, 'values': (kind, folder, sha[:8], date, state),
+                'search': ' '.join((kind, folder, sha, date, created, state)),
+                'sort': {'kind': kind.casefold(), 'path': folder.casefold(), 'sha': sha,
+                         'created': timestamp, 'state': state}})
+        for index, folder in enumerate(self.current.get('work', [])):
+            add('work:' + str(index), '作業用（登録）', folder)
         for record in self.project.snapshots():
-            item = self.folders.insert('', 'end', values=('再現したフォルダー', record['folder'], record['sha'][:8],
-                                                        self.folder_state(record['folder'])))
+            item = 'snapshot:' + record['folder']
+            add(item, '再現したフォルダー', record['folder'], record['sha'], record.get('created', ''))
             self.folder_records[item] = record
+        self.render_folders()
 
     def with_selected_folder(self, action):
         if self.busy: return
@@ -257,6 +321,7 @@ class App:
                 '\n再現後に手元で加えた変更は復元されません。'):
             return
         def done(new_folder):
+            self.folder_query.set('')
             self.load_folders()
             for new_item, new_record in self.folder_records.items():
                 if new_record['folder'] == new_folder:
