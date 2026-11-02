@@ -59,6 +59,10 @@ class App:
         ttk.Label(brand, text='GitHug', style='Brand.TLabel').pack(anchor='w')
         ttk.Label(brand, text='履歴から、安心して試す', style='BrandSubtitle.TLabel').pack(anchor='w')
         ttk.Label(appbar, text='v' + __version__, style='Badge.TLabel').pack(side='left', padx=16)
+        # Use the supplied illustration unchanged; native Tk scaling needs no imaging dependency.
+        self.mascot_image = tk.PhotoImage(master=window, file=str(Path(__file__).parent/'assets'/'living_agent.png')).subsample(4,4)
+        self.mascot = tk.Label(appbar, image=self.mascot_image, bg='#000000', borderwidth=0)
+        self.mascot.pack(side='right', padx=(16,0))
         self.operation_state = tk.StringVar(value='待機中')
         ttk.Button(appbar, text='使い方・環境', command=self.guide, style='Quiet.TButton').pack(side='right')
         self.activity_bar = ttk.Progressbar(appbar, mode='indeterminate', length=90)

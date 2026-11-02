@@ -41,6 +41,7 @@ def main():
     cache=ROOT/'build'/'packaging';cache.mkdir(parents=True,exist_ok=True)
     icon=cache/'GitHug.ico';icon.write_bytes(icon_bytes())
     subprocess.run([sys.executable,'-m','PyInstaller','--noconfirm','--clean','--onedir','--windowed',
+                    '--add-data',str(ROOT/'githug'/'assets')+os.pathsep+'githug/assets',
                     '--noupx','--name','GitHug','--icon',str(icon),'--distpath',str(ROOT/'dist'),
                     '--workpath',str(ROOT/'build'/'pyinstaller'),'--specpath',str(cache),
                     str(ROOT/'run_githug.py')],cwd=ROOT,check=True)

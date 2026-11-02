@@ -30,7 +30,8 @@ def launch(app_class, argv=None):
             from .core import git
             report={'version':__version__,'platform':platform.platform(),'frozen':bool(getattr(sys,'frozen',False)),
                     'git_executable':git_executable(),'git_version':git('--version').strip(),
-                    'tk':str(root.tk.call('info','patchlevel')),'gui_initialized':True}
+                    'tk':str(root.tk.call('info','patchlevel')),'gui_initialized':True,
+                    'mascot_size':[app.mascot_image.width(),app.mascot_image.height()]}
             from .core import Project
             from .notes import Notes
             with tempfile.TemporaryDirectory(prefix='GitHug-smoke-') as temporary:
