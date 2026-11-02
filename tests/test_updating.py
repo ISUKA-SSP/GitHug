@@ -11,7 +11,7 @@ from githug.updating import inspect_update, apply_update, UpdateConflict, Update
 class UpdateTests(unittest.TestCase):
     def setUp(self):
         self.temporary = tempfile.TemporaryDirectory()
-        self.root = Path(self.temporary.name)
+        self.root = Path(self.temporary.name).resolve()
         source = self.root / 'source'
         self.source = source
         source.mkdir()
