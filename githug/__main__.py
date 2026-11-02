@@ -18,6 +18,9 @@ from .updating import (inspect_update, apply_update, record_for_folder, authoriz
 from .notes import Notes, short_note
 from .editors import find_vscode, open_vscode
 from .push_ui import PushUI
+from .history_graph import HistoryGraph, history_page
+from .graph_view import GraphView
+from .drag_hint import DragHint
 
 class App:
     def __init__(self, window):
@@ -39,7 +42,12 @@ class App:
         self.records = {}
         self.history_rows = []
         self.folder_rows = []
-        self.sort_options = {'history': ('date', True), 'folders': ('created', True)}
+        self.sort_options = {'history': ('topology', False), 'folders': ('created', True)}
+        self.history_model = HistoryGraph([])
+        self.history_page = 0
+        self.history_page_size = self.config.get('history_page_size', 100)
+        if self.history_page_size not in (50, 100, 200): self.history_page_size = 100
+        self.drag_hint = DragHint(window)
         self.events = queue.Queue()
         toolbar = ttk.Frame(window, padding=12)
         toolbar.pack(fill='x')
@@ -65,21 +73,27 @@ class App:
         self.sections.pack(fill='both', expand=True)
         history_tab = ttk.Frame(self.sections, padding=8)
         history_tab.columnconfigure(0, weight=1)
-        history_tab.rowconfigure(3, weight=1, minsize=70)
+        history_tab.rowconfigure(4, weight=1, minsize=70)
         self.sections.add(history_tab, weight=3)
-        ttk.Label(history_tab, text='GitHubの履歴', style='Heading.TLabel').grid(row=0, column=0, sticky='w')
-        ttk.Label(history_tab, text='履歴を下へドラッグ：空白へ新規再現／フォルダーの行へ更新の確認', style='Muted.TLabel').grid(row=1, column=0, sticky='w', pady=4)
+        history_header = ttk.Frame(history_tab)
+        history_header.grid(row=0, column=0, sticky='ew', pady=(0, 4))
+        ttk.Label(history_header, text='GitHubの履歴', style='Heading.TLabel').pack(side='left')
+        ttk.Label(history_header, text='下へドラッグで再現・更新／下から上へドラッグで送信確認', style='Muted.TLabel').pack(side='left', padx=12)
         self.history_query, self.history_count = self.search_bar(history_tab, '履歴を検索（説明・枝名・履歴番号・日時・自分用メモ）', grid_row=2)
-        self.history = self.table(history_tab, ('date', 'refs', 'message', 'memo'), ('更新日時', '作業の枝・目印', '変更の説明', '自分用メモ'), tree=True, grid_row=3)
+        self.history = self.table(history_tab, ('date', 'refs', 'message', 'memo'), ('更新日時', '作業の枝・目印', '変更の説明', '自分用メモ'), tree=True, grid_row=4, graph=True)
         self.history.bind('<<TreeviewSelect>>', self.detail)
         self.history.bind('<Button-3>', self.menu)
         self.history.bind('<ButtonPress-1>', self.history_press, add='+')
         self.history.bind('<B1-Motion>', self.history_motion, add='+')
         self.history.bind('<ButtonRelease-1>', self.history_release, add='+')
+        for event, handler in [('<ButtonPress-1>', self.history_press), ('<B1-Motion>', self.history_motion),
+                               ('<ButtonRelease-1>', self.history_release), ('<Button-3>', self.menu)]:
+            self.history.graph_view.canvas.bind(event, handler)
+        self.history_pager(history_tab)
         self.selection = tk.StringVar(value='')
-        ttk.Label(history_tab, textvariable=self.selection, wraplength=850, style='Muted.TLabel').grid(row=4, column=0, sticky='ew', pady=4)
+        ttk.Label(history_tab, textvariable=self.selection, wraplength=850, style='Muted.TLabel').grid(row=5, column=0, sticky='ew', pady=4)
         controls = ttk.Frame(history_tab)
-        controls.grid(row=5, column=0, sticky='ew')
+        controls.grid(row=6, column=0, sticky='ew')
         ttk.Button(controls, text='この時点を新しいフォルダーに再現', command=self.reproduce).pack(side='left', padx=4)
         ttk.Button(controls, text='作業フォルダーと比較', command=self.compare).pack(side='left', padx=4)
         folders = ttk.Frame(self.sections, padding=8)
@@ -96,6 +110,7 @@ class App:
         self.folders.bind('<B1-Motion>', self.folder_motion, add='+')
         self.folders.bind('<ButtonRelease-1>', self.folder_release, add='+')
         self.window.bind('<FocusIn>', self.on_window_focus, add='+')
+        self.window.bind('<Escape>', self.cancel_drag, add='+')
         folder_controls = ttk.Frame(folders)
         folder_controls.grid(row=4, column=0, sticky='ew', pady=(6, 0))
         ttk.Button(folder_controls, text='作業フォルダーを登録', command=self.register_folder).pack(side='left', padx=4)
@@ -107,7 +122,7 @@ class App:
         self.history_query.trace_add('write', lambda *_: self.render_history())
         self.folder_query.trace_add('write', lambda *_: self.render_folders())
         self.populate_projects()
-        window.after(150, lambda: self.sections.sashpos(0, int(self.sections.winfo_height() * 0.55)))
+        window.after(150, lambda: self.sections.sashpos(0, int(self.sections.winfo_height() * 0.60)))
         window.after(100, self.poll)
 
     def search_bar(self, parent, description, grid_row=None):
@@ -151,15 +166,92 @@ class App:
             table.yview_moveto(0)
         count.set(f'{len(shown)} / {len(rows)} 件')
 
-    def render_history(self):
-        self.render_rows('history', self.history, self.history_rows, self.history_query, self.history_count)
+    def history_pager(self, parent):
+        bar = ttk.Frame(parent)
+        bar.grid(row=3, column=0, sticky='ew', pady=(0, 6))
+        self.page_number = tk.StringVar(value='0')
+        self.page_total = tk.StringVar(value='/ 0 ページ')
+        self.page_size_text = tk.StringVar(value=str(self.history_page_size))
+        self.history_mode_text = tk.StringVar(value='グラフ：履歴のつながり順')
+        self.newer_button = ttk.Button(bar, text='◁ 新しい方', command=lambda: self.move_history_page(-1), state='disabled')
+        self.newer_button.grid(row=0, column=0, padx=(0, 4))
+        page_entry = ttk.Entry(bar, textvariable=self.page_number, width=5, justify='center')
+        page_entry.grid(row=0, column=1)
+        page_entry.bind('<Return>', lambda event: self.go_history_page())
+        ttk.Label(bar, textvariable=self.page_total).grid(row=0, column=2, padx=5)
+        ttk.Button(bar, text='移動', command=self.go_history_page).grid(row=0, column=3, padx=4)
+        self.older_button = ttk.Button(bar, text='古い方 ▷', command=lambda: self.move_history_page(1), state='disabled')
+        self.older_button.grid(row=0, column=4, padx=4)
+        size = ttk.Combobox(bar, textvariable=self.page_size_text, values=('50', '100', '200'), width=5, state='readonly')
+        size.grid(row=0, column=5, padx=(10, 4))
+        size.bind('<<ComboboxSelected>>', lambda event: self.resize_history_page())
+        ttk.Label(bar, text='件／ページ').grid(row=0, column=6)
+        ttk.Button(bar, text='履歴の流れで見る', command=self.jump_to_history_graph).grid(row=0, column=7, padx=8)
+        ttk.Label(bar, textvariable=self.history_mode_text, style='Muted.TLabel', wraplength=850).grid(row=1, column=0, columnspan=8, sticky='w', pady=(4, 0))
+
+    def move_history_page(self, step):
+        self.history_page += step
+        self.render_history(reset_page=False)
+
+    def go_history_page(self):
+        try:
+            value = int(self.page_number.get())
+            if value < 1: raise ValueError()
+        except ValueError:
+            messagebox.showinfo('ページ番号', '1以上のページ番号を入力してください。')
+            return
+        self.history_page = value - 1
+        self.render_history(reset_page=False)
+
+    def resize_history_page(self):
+        old_start = self.history_page * self.history_page_size
+        self.history_page_size = int(self.page_size_text.get())
+        self.history_page = old_start // self.history_page_size
+        self.config['history_page_size'] = self.history_page_size
+        self.save()
+        self.render_history(reset_page=False)
+
+    def jump_to_history_graph(self):
+        selected = self.history.selection()
+        sha = selected[0] if selected else None
+        self.sort_options['history'] = ('topology', False)
+        self.history_query.set('')
+        self.render_history(focus_sha=sha)
+
+    def render_history(self, reset_page=True, focus_sha=None):
+        selected = self.history.selection()
+        if reset_page: self.history_page = 0
+        column, descending = self.sort_options['history']
+        page = history_page(self.history_rows, self.history_query.get(), column, descending,
+                            self.history_page, self.history_page_size, focus=focus_sha)
+        self.history_page = page.page
+        self.history.delete(*self.history.get_children())
+        for row in page.rows:
+            self.history.insert('', 'end', iid=row['id'], text=row['text'], values=row['values'])
+        for col, label in self.history.sort_labels.items():
+            self.history.heading(col, text=label + ((' ▼' if descending else ' ▲') if col == column else ''))
+        graph_mode = column == 'topology' and not self.history_query.get().strip()
+        self.history.graph_view.set_page(self.history_model, [row['id'] for row in page.rows], graph_mode)
+        desired = focus_sha or (selected[0] if selected else None)
+        if desired and self.history.exists(desired):
+            self.history.selection_set(desired)
+            self.history.see(desired)
+        else:
+            self.history.yview_moveto(0)
+        self.page_number.set(str(page.page + 1) if page.pages else '0')
+        self.page_total.set(f'/ {page.pages} ページ')
+        self.newer_button.configure(state='normal' if page.page > 0 else 'disabled')
+        self.older_button.configure(state='normal' if page.page + 1 < page.pages else 'disabled')
+        self.history_count.set(f'{page.matches} / {page.total} 件')
+        self.history_mode_text.set('グラフ：つながり順。上下の矢印は表示範囲外へ続きます。' if graph_mode else
+                                   '検索・並べ替え中は線を省略。履歴を選び「履歴の流れで見る」で該当位置へ戻れます。')
         self.selection.set('')
         self.detail()
 
     def render_folders(self):
         self.render_rows('folders', self.folders, self.folder_rows, self.folder_query, self.folder_count)
 
-    def table(self, parent, columns, labels, tree=False, grid_row=None):
+    def table(self, parent, columns, labels, tree=False, grid_row=None, graph=False):
         frame = ttk.Frame(parent)
         if grid_row is None:
             frame.pack(fill='both', expand=True)
@@ -167,18 +259,33 @@ class App:
             frame.grid(row=grid_row, column=0, sticky='nsew')
         widget = ttk.Treeview(frame, columns=columns, show='tree headings' if tree else 'headings', selectmode='browse', height=3)
         if tree:
-            widget.heading('#0', text='履歴・合流')
+            widget.heading('#0', text='履歴番号')
             widget.column('#0', width=160)
         for col, label in zip(columns, labels):
             widget.heading(col, text=label)
             widget.column(col, width={'path': 550, 'message': 440, 'date': 175, 'created': 175}.get(col, 170), minwidth=100)
         horizontal = ttk.Scrollbar(frame, orient='horizontal', command=widget.xview)
-        horizontal.pack(side='bottom', fill='x')
         widget.configure(xscrollcommand=horizontal.set)
         scrollbar = ttk.Scrollbar(frame, orient='vertical', command=widget.yview)
-        widget.configure(yscrollcommand=scrollbar.set)
-        scrollbar.pack(side='right', fill='y')
-        widget.pack(fill='both', expand=True)
+        if graph:
+            frame.columnconfigure(1, weight=1)
+            frame.rowconfigure(0, weight=1)
+            graph_view = GraphView(frame, widget)
+            widget.graph_view = graph_view
+            graph_view.canvas.grid(row=0, column=0, sticky='nsew')
+            graph_view.scrollbar.grid(row=1, column=0, sticky='ew')
+            widget.grid(row=0, column=1, sticky='nsew')
+            scrollbar.grid(row=0, column=2, sticky='ns')
+            horizontal.grid(row=1, column=1, sticky='ew')
+            def scrolled(first, last):
+                scrollbar.set(first, last)
+                graph_view.schedule()
+            widget.configure(yscrollcommand=scrolled)
+        else:
+            horizontal.pack(side='bottom', fill='x')
+            widget.configure(yscrollcommand=scrollbar.set)
+            scrollbar.pack(side='right', fill='y')
+            widget.pack(fill='both', expand=True)
         return widget
 
     def save(self):
@@ -228,9 +335,17 @@ class App:
         if not indices: return
         self.current = self.config['projects'][indices[0]]
         self.project = Project(self.config['root'], self.current['url'])
+        self.records = {}
+        self.history_rows = []
+        self.history_model = HistoryGraph([])
+        self.sort_options['history'] = ('topology', False)
+        self.history_page = 0
+        self.history_query.set('')
+        self.render_history()
         self.notes = None
         try: self.notes = Notes(self.project.base)
         except (OSError, ValueError) as exc: messagebox.showinfo('自分用メモを読み込めませんでした', str(exc))
+        self.load_folders()
         self.refresh()
 
     def run(self, description, task, callback):
@@ -268,10 +383,12 @@ class App:
             self.run('GitHubの履歴を確認しています…', self.project.refresh, self.show_history)
 
     def show_history(self, records):
+        previous = self.history.selection()
+        self.history_model = HistoryGraph(records)
         if self.notes: self.notes.reload()
         self.records = {r['sha']: r for r in records}
         self.history_rows = []
-        for r in records:
+        for index, r in enumerate(records):
             memo = self.notes.get('history', r['sha']) if self.notes else ''
             date, timestamp = date_value(r['date'])
             merge = '（合流）' if len(r['parents'].split()) > 1 else ''
@@ -279,16 +396,19 @@ class App:
                 'id': r['sha'], 'text': r['sha'][:8] + merge,
                 'values': (date, r['refs'], r['message'], short_note(memo)),
                 'search': ' '.join((r['sha'], r['parents'], date, r['date'], r['refs'], r['message'], memo)),
-                'sort': {'#0': r['sha'], 'date': timestamp, 'refs': r['refs'].casefold(), 'message': r['message'].casefold(), 'memo': memo.casefold()}})
-        self.render_history()
+                'sort': {'topology': index, '#0': r['sha'], 'date': timestamp, 'refs': r['refs'].casefold(), 'message': r['message'].casefold(), 'memo': memo.casefold()}})
+        self.render_history(reset_page=False, focus_sha=previous[0] if previous and previous[0] in self.records else None)
         self.load_folders()
-        self.status.set('履歴を取得しました（最大400件）。検索は取得済みの履歴が対象です。列見出しで並べ替えできます。')
+        self.status.set(f'全 {len(records)} 件の履歴を取得しました。検索は自分用メモを含む全履歴が対象です。')
 
     def detail(self, event=None):
         items = self.history.selection()
+        self.history.graph_view.set_focus(items[0] if items else None)
         if items:
             r = self.records[items[0]]
-            self.selection.set(r['message'] + '\n元になった履歴: ' + (r['parents'] or '最初の履歴'))
+            subject = r['message'][:100] + ('…' if len(r['message']) > 100 else '')
+            parents = '・'.join(value[:8] for value in r['parents'].split()) or '最初の履歴'
+            self.selection.set(subject + '\n前につながる履歴: ' + parents)
 
     def menu(self, event):
         item = self.history.identify_row(event.y)
@@ -408,6 +528,15 @@ class App:
             return
         self.push_ui.begin(self.folders.item(items[0], 'values')[1])
 
+    def cancel_drag(self, event=None):
+        if not self.dragging: return
+        self.dragging = None
+        self.drag_hint.hide()
+        self.history.configure(cursor='')
+        self.folders.configure(cursor='')
+        self.status.set('ドラッグを取り消しました。')
+        return 'break'
+
     def folder_press(self, event):
         self.dragging = None
         if self.busy or not self.project or self.folders.identify_region(event.x, event.y) != 'cell': return
@@ -421,23 +550,30 @@ class App:
         if not drag or drag.get('direction') != 'push': return
         if abs(event.x_root - drag['x']) + abs(event.y_root - drag['y']) < 8: return
         drag['active'] = True
-        self.folders.configure(cursor='fleur')
+        self.folders.configure(cursor='arrow')
         target = self.window.winfo_containing(event.x_root, event.y_root)
-        if target is self.history:
+        graph_canvas = getattr(getattr(self.history, 'graph_view', None), 'canvas', None)
+        if target is self.history or target is graph_canvas:
             y = event.y_root - self.history.winfo_rooty()
             item = self.history.identify_row(y)
             if item: self.history.selection_set(item)
+            valid = self.history.identify_region(5, y) not in ('heading', 'separator')
+            self.drag_hint.show(event.x_root, event.y_root, 'GitHubへ送る内容を確認' if valid else 'ここには置けません', Path(drag['folder']).name, allowed=valid, action='↑')
             self.status.set('ここで離すと、送信する変更と送信先を確認します。まだGitHubへは送りません。')
         else:
+            self.drag_hint.show(event.x_root, event.y_root, 'ここには置けません', Path(drag['folder']).name, allowed=False)
             self.status.set('GitHubの履歴へドラッグすると、送信する変更を確認できます。')
 
     def folder_release(self, event):
         drag = self.dragging
         self.dragging = None
         self.folders.configure(cursor='')
+        if getattr(self, 'drag_hint', None): self.drag_hint.hide()
         if not drag or drag.get('direction') != 'push' or not drag['active'] or self.busy or self.project is not drag['project']: return
-        if self.window.winfo_containing(event.x_root, event.y_root) is not self.history: return
-        x = event.x_root - self.history.winfo_rootx()
+        target = self.window.winfo_containing(event.x_root, event.y_root)
+        graph_canvas = getattr(getattr(self.history, 'graph_view', None), 'canvas', None)
+        if target is not self.history and target is not graph_canvas: return
+        x = 5 if target is graph_canvas else event.x_root - self.history.winfo_rootx()
         y = event.y_root - self.history.winfo_rooty()
         if self.history.identify_region(x, y) in ('heading', 'separator'): return
         item = self.history.identify_row(y)
@@ -445,10 +581,13 @@ class App:
 
     def history_press(self, event):
         self.dragging = None
-        if self.busy or not self.project or self.history.identify_region(event.x, event.y) not in ('tree', 'cell'):
+        canvas = self.history.graph_view.canvas
+        x = 5 if getattr(event, 'widget', None) is canvas else event.x
+        if self.busy or not self.project or self.history.identify_region(x, event.y) not in ('tree', 'cell'):
             return
         item = self.history.identify_row(event.y)
         if item:
+            self.history.selection_set(item)
             self.dragging = {'sha': item, 'project': self.project, 'x': event.x_root,
                              'y': event.y_root, 'active': False}
 
@@ -457,7 +596,7 @@ class App:
         if not drag: return
         if abs(event.x_root - drag['x']) + abs(event.y_root - drag['y']) < 8: return
         drag['active'] = True
-        self.history.configure(cursor='fleur')
+        self.history.configure(cursor='arrow')
         target = self.window.winfo_containing(event.x_root, event.y_root)
         if target is self.folders:
             y = event.y_root - self.folders.winfo_rooty()
@@ -468,14 +607,19 @@ class App:
                 if y < 40: self.folders.yview_scroll(-1, 'units')
                 elif y > self.folders.winfo_height() - 25: self.folders.yview_scroll(1, 'units')
                 self.drag_scroll_at = now
+            valid = self.folders.identify_region(event.x_root - self.folders.winfo_rootx(), y) not in ('heading', 'separator')
+            self.drag_hint.show(event.x_root, event.y_root, ('このフォルダーを更新' if item else '新しく再現') if valid else 'ここには置けません',
+                                '履歴 ' + drag['sha'][:12], allowed=valid, action='↻' if item else '+')
             self.status.set('ここで離すと、このフォルダーへの更新を確認します。' if item else 'ここで離すと、新しい再現フォルダーを作ります。')
         else:
+            self.drag_hint.show(event.x_root, event.y_root, 'ここには置けません', '履歴 ' + drag['sha'][:12], allowed=False)
             self.status.set('PCのフォルダーの行へドラッグで更新、一覧の空白へドラッグで新規再現。')
 
     def history_release(self, event):
         drag = self.dragging
         self.dragging = None
         self.history.configure(cursor='')
+        if getattr(self, 'drag_hint', None): self.drag_hint.hide()
         if not drag or not drag['active'] or self.busy or self.project is not drag['project']:
             return
         target = self.window.winfo_containing(event.x_root, event.y_root)

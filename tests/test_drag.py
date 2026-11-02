@@ -73,3 +73,10 @@ class PushDragTests(unittest.TestCase):
         app,event = self.make()
         App.folder_release(app,event)
         app.push_ui.begin.assert_called_once_with('folder',None)
+
+class DragCancelTests(unittest.TestCase):
+    def test_escape_cancels_without_any_transfer(self):
+        app=SimpleNamespace(dragging={'active':True},drag_hint=Mock(),history=Mock(),folders=Mock(),status=Mock())
+        self.assertEqual(App.cancel_drag(app),'break')
+        self.assertIsNone(app.dragging)
+        app.drag_hint.hide.assert_called_once()

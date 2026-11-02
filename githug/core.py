@@ -55,7 +55,7 @@ class Project:
         return self.history()
 
     def history(self):
-        raw = git('log', '--all', '--date=iso-strict', '--pretty=format:%H%x09%P%x09%aI%x09%D%x09%s', '-n', '400', cwd=self.cache)
+        raw = git('log', '--all', '--topo-order', '--date=iso-strict', '--pretty=format:%H%x09%P%x09%aI%x09%D%x09%s', cwd=self.cache)
         return [dict(zip(('sha', 'parents', 'date', 'refs', 'message'), line.split('\t', 4)))
                 for line in raw.splitlines() if line]
 
