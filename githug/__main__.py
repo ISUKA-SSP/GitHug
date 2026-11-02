@@ -13,6 +13,7 @@ from .terminal import open_powershell
 from . import __version__
 from .listing import date_value, visible_rows
 from .theme import apply_dark_theme
+from .updating import inspect_update, apply_update
 
 class App:
     def __init__(self, window):
@@ -27,6 +28,7 @@ class App:
         except (FileNotFoundError, ValueError):
             self.config = {'root': '', 'projects': []}
         self.project = None
+        self.dragging = None
         self.busy = False
         self.records = {}
         self.history_rows = []
@@ -39,7 +41,10 @@ class App:
         for title, command in [('保存先を選ぶ', self.choose_root), ('プロジェクトを追加', self.add), ('更新を確認', self.refresh)]:
             ttk.Button(toolbar, text=title, command=command).pack(side='left', padx=4)
         self.status = tk.StringVar(value='プロジェクトを追加して始めましょう。既存の作業フォルダーは書き換えません。')
-        ttk.Label(window, textvariable=self.status, padding=10).pack(fill='x', side='bottom')
+        ttk.Label(window, textvariable=self.status, padding=10, wraplength=1250).pack(fill='x', side='bottom')
+        self.activity_bar = ttk.Progressbar(toolbar, mode='indeterminate', length=100)
+        self.activity_bar.pack(side='right', padx=8)
+        ttk.Button(toolbar, text='保管した内容', command=self.backups_dialog).pack(side='left', padx=4)
         split = ttk.Panedwindow(window, orient='horizontal')
         split.pack(fill='both', expand=True, padx=12, pady=8)
         left = ttk.Frame(split, padding=8)
@@ -57,11 +62,14 @@ class App:
         history_tab.rowconfigure(3, weight=1, minsize=70)
         self.sections.add(history_tab, weight=3)
         ttk.Label(history_tab, text='GitHubの履歴', style='Heading.TLabel').grid(row=0, column=0, sticky='w')
-        ttk.Label(history_tab, text='履歴を選択 → 右クリックで新しいフォルダーに再現', style='Muted.TLabel').grid(row=1, column=0, sticky='w', pady=4)
+        ttk.Label(history_tab, text='履歴を下へドラッグ：空白へ新規再現／フォルダーの行へ更新の確認', style='Muted.TLabel').grid(row=1, column=0, sticky='w', pady=4)
         self.history_query, self.history_count = self.search_bar(history_tab, '履歴を検索（説明・枝名・履歴番号・日時）', grid_row=2)
         self.history = self.table(history_tab, ('date', 'refs', 'message'), ('更新日時', '作業の枝・目印', '変更の説明'), tree=True, grid_row=3)
         self.history.bind('<<TreeviewSelect>>', self.detail)
         self.history.bind('<Button-3>', self.menu)
+        self.history.bind('<ButtonPress-1>', self.history_press, add='+')
+        self.history.bind('<B1-Motion>', self.history_motion, add='+')
+        self.history.bind('<ButtonRelease-1>', self.history_release, add='+')
         self.selection = tk.StringVar(value='')
         ttk.Label(history_tab, textvariable=self.selection, wraplength=850, style='Muted.TLabel').grid(row=4, column=0, sticky='ew', pady=4)
         controls = ttk.Frame(history_tab)
@@ -73,7 +81,7 @@ class App:
         folders.rowconfigure(3, weight=1, minsize=70)
         self.sections.add(folders, weight=2)
         ttk.Label(folders, text='PCのフォルダー', style='Heading.TLabel').grid(row=0, column=0, sticky='w')
-        ttk.Label(folders, text='再現フォルダーは毎回新規作成。登録した作業用は履歴・再現日時が空欄です。', style='Muted.TLabel').grid(row=1, column=0, sticky='w', pady=4)
+        ttk.Label(folders, text='再現フォルダーは毎回新規作成。未再現の作業用は履歴・再現日時が空欄です。', style='Muted.TLabel').grid(row=1, column=0, sticky='w', pady=4)
         self.folder_query, self.folder_count = self.search_bar(folders, 'フォルダーを検索（保存場所・再現日時・状態・履歴番号）', grid_row=2)
         self.folders = self.table(folders, ('kind', 'path', 'sha', 'created', 'state'), ('種類', '保存場所', '元の履歴', '再現した日時', '状態'), grid_row=3)
         self.folders.configure(displaycolumns=('sha', 'created', 'state', 'path'))
@@ -216,6 +224,10 @@ class App:
     def run(self, description, task, callback):
         if self.busy: return
         self.busy = True
+        self.operation_label = description
+        self.operation_note = ''
+        self.operation_started = time.monotonic()
+        self.activity_bar.start(40)
         self.status.set(description)
         def worker():
             try: self.events.put((callback, task(), None))
@@ -226,13 +238,17 @@ class App:
         try:
             callback, result, error = self.events.get_nowait()
             self.busy = False
+            self.activity_bar.stop()
             if error:
-                self.status.set('操作を完了できませんでした。フォルダーはそのまま残しています。')
+                self.status.set('操作を完了できませんでした。案内を確認してください。')
                 messagebox.showinfo('状況の確認', error)
             else:
                 self.status.set('完了しました。')
                 callback(result)
-        except queue.Empty: pass
+        except queue.Empty:
+            if self.busy:
+                note = self.operation_note[-120:]
+                self.status.set(f'{self.operation_label}  {int(time.monotonic() - self.operation_started)} 秒  {note}')
         self.window.after(100, self.poll)
 
     def refresh(self):
@@ -267,15 +283,196 @@ class App:
         menu = tk.Menu(self.window, tearoff=False)
         menu.add_command(label='この時点を新しいフォルダーに再現', command=self.reproduce)
         menu.add_command(label='作業フォルダーと比較', command=self.compare)
+        menu.add_command(label='選んだフォルダーをこの版に更新', command=self.update_selected)
         menu.tk_popup(event.x_root, event.y_root)
+
+    def history_press(self, event):
+        self.dragging = None
+        if self.busy or not self.project or self.history.identify_region(event.x, event.y) not in ('tree', 'cell'):
+            return
+        item = self.history.identify_row(event.y)
+        if item:
+            self.dragging = {'sha': item, 'project': self.project, 'x': event.x_root,
+                             'y': event.y_root, 'active': False}
+
+    def history_motion(self, event):
+        drag = self.dragging
+        if not drag: return
+        if abs(event.x_root - drag['x']) + abs(event.y_root - drag['y']) < 8: return
+        drag['active'] = True
+        self.history.configure(cursor='fleur')
+        target = self.window.winfo_containing(event.x_root, event.y_root)
+        if target is self.folders:
+            y = event.y_root - self.folders.winfo_rooty()
+            item = self.folders.identify_row(y)
+            if item: self.folders.selection_set(item)
+            now = time.monotonic()
+            if now - getattr(self, 'drag_scroll_at', 0) > 0.15:
+                if y < 40: self.folders.yview_scroll(-1, 'units')
+                elif y > self.folders.winfo_height() - 25: self.folders.yview_scroll(1, 'units')
+                self.drag_scroll_at = now
+            self.status.set('ここで離すと、このフォルダーへの更新を確認します。' if item else 'ここで離すと、新しい再現フォルダーを作ります。')
+        else:
+            self.status.set('PCのフォルダーの行へドラッグで更新、一覧の空白へドラッグで新規再現。')
+
+    def history_release(self, event):
+        drag = self.dragging
+        self.dragging = None
+        self.history.configure(cursor='')
+        if not drag or not drag['active'] or self.busy or self.project is not drag['project']:
+            return
+        target = self.window.winfo_containing(event.x_root, event.y_root)
+        if target is not self.folders:
+            self.status.set('ドラッグを取り消しました。')
+            return
+        x = event.x_root - self.folders.winfo_rootx()
+        y = event.y_root - self.folders.winfo_rooty()
+        if self.folders.identify_region(x, y) in ('heading', 'separator'):
+            self.status.set('列見出しにはドロップできません。')
+            return
+        item = self.folders.identify_row(y)
+        if item:
+            self.folders.selection_set(item)
+            self.begin_update(drag['sha'], item)
+        else:
+            self.reproduce_sha(drag['sha'])
+
+    def reproduce_sha(self, sha):
+        if self.busy or not self.project: return
+        project = self.project
+        def done(folder):
+            self.folder_query.set('')
+            self.load_folders()
+            for item, record in self.folder_records.items():
+                if record['folder'] == folder:
+                    self.folders.selection_set(item)
+                    self.folders.see(item)
+                    break
+            messagebox.showinfo('再現しました', '新しいフォルダーに保存しました。\n' + folder)
+        self.run('新しいフォルダーへ再現しています…', lambda: project.snapshot(sha), done)
+
+    def update_selected(self):
+        history = self.history.selection()
+        folders = self.folders.selection()
+        if not history or not folders:
+            messagebox.showinfo('更新元と更新先を選択', '上で履歴、下で更新先のフォルダーを選んでください。')
+            return
+        self.begin_update(history[0], folders[0])
+
+    def begin_update(self, sha, item):
+        if self.busy or not self.project: return
+        folder = self.folders.item(item, 'values')[1]
+        if not Path(folder).is_dir():
+            if messagebox.askyesno('フォルダーが見つかりません',
+                    '更新先が削除、または移動されています。\n選んだ履歴から別フォルダーへ新しく再現しますか？\n' + folder):
+                self.reproduce_sha(sha)
+            return
+        project = self.project
+        def progress(note): self.operation_note = note
+        self.run('手元の変更を確認しています…',
+                 lambda: inspect_update(project, folder, sha, progress),
+                 lambda plan: self.update_dialog(project, plan))
+
+    def update_dialog(self, project, plan):
+        popup = tk.Toplevel(self.window)
+        popup.title('このフォルダーを選んだ版に更新')
+        popup.geometry('880x660')
+        popup.minsize(680, 570)
+        popup.transient(self.window)
+        popup.columnconfigure(0, weight=1)
+        popup.rowconfigure(3, weight=1)
+        ttk.Label(popup, text='更新先: ' + str(plan.folder), wraplength=640, padding=12).grid(row=0, column=0, sticky='ew')
+        ttk.Label(popup, text='選んだ履歴: ' + plan.sha[:12] + '\n' +
+                  ('元の履歴が不明です。現在の内容を保管してからの更新をおすすめします。' if plan.unknown else
+                   f'手元の変更・追加など: {len(plan.differences)} 件（元の履歴 {plan.baseline[:8]} との比較）'),
+                  padding=(12, 0), wraplength=640).grid(row=1, column=0, sticky='ew')
+        ttk.Label(popup, text='同名ファイルだけの上書きではなく、フォルダー全体を選んだ版に入れ替えます。\n'
+                  '手元だけの設定・DB・実行環境・Git管理情報も入れ替え対象です。関連アプリを閉じてから実行してください。',
+                  wraplength=640, padding=12).grid(row=2, column=0, sticky='ew')
+        table = self.table(popup, ('state', 'path'), ('確認内容', 'ファイル／場所'), grid_row=3)
+        for row in plan.differences[:1000]: table.insert('', 'end', values=row)
+        if len(plan.differences) > 1000: table.insert('', 'end', values=('表示は先頭1000件までです', ''))
+        if not plan.differences: table.insert('', 'end', values=('ファイル内容に手元の変更はありません', ''))
+        ttk.Label(popup, text='「保管」は更新前のフォルダー全体をZIPにまとめます。\n'
+                  '「保管した内容」から確認・削除できます。自分の変更を新しい版へ自動で混ぜる操作ではありません。',
+                  padding=12, wraplength=640).grid(row=4, column=0, sticky='ew')
+        buttons = ttk.Frame(popup, padding=12)
+        buttons.grid(row=5, column=0, sticky='ew')
+        buttons.columnconfigure(0, weight=1)
+        buttons.columnconfigure(1, weight=1)
+        def execute(keep):
+            if not keep and not messagebox.askyesno('保管せずに更新しますか？',
+                    '現在の内容を保管せずに入れ替えます。\n手元の変更・追加ファイル・Git管理情報は元に戻せません。\n' + str(plan.folder), parent=popup):
+                return
+            popup.destroy()
+            def progress(note): self.operation_note = note
+            def done(result):
+                self.folder_query.set('')
+                self.load_folders()
+                detail = '同じ場所を選んだ版に更新しました。\n' + result['folder']
+                if result['backup']: detail += '\n\n更新前の内容: ' + result['backup']
+                if result['warning']: detail += '\n\n' + result['warning']
+                messagebox.showinfo('更新しました', detail)
+            self.run('選んだ版に更新しています…', lambda: apply_update(project, plan, keep, progress), done)
+        def separate():
+            popup.destroy()
+            self.reproduce_sha(plan.sha)
+        ttk.Button(buttons, text='今の内容を保管して更新', command=lambda: execute(True)).grid(row=0, column=0, sticky='ew', padx=4, pady=4)
+        ttk.Button(buttons, text='変更を破棄して更新' if plan.differences else '保管せず更新', command=lambda: execute(False)).grid(row=0, column=1, sticky='ew', padx=4, pady=4)
+        ttk.Button(buttons, text='別フォルダーに再現', command=separate).grid(row=1, column=0, sticky='ew', padx=4, pady=4)
+        ttk.Button(buttons, text='キャンセル', command=popup.destroy).grid(row=1, column=1, sticky='ew', padx=4, pady=4)
+        popup.grab_set()
+
+    def backups_dialog(self):
+        if not self.project: return
+        project = self.project
+        directory = project.base / 'backups'
+        popup = tk.Toplevel(self.window)
+        popup.title('保管した内容 — ' + project.name)
+        popup.geometry('950x550')
+        ttk.Label(popup, text='更新前の内容をZIPで保管しています。復元するときはZIPを別の場所へ展開してください。', padding=12).pack(anchor='w')
+        controls = ttk.Frame(popup, padding=12)
+        controls.pack(side='bottom', fill='x')
+        table = self.table(popup, ('created', 'folder', 'size'), ('保管日時', '元のフォルダー', 'サイズ'))
+        items = {}
+        def reload():
+            table.delete(*table.get_children())
+            items.clear()
+            for archive in sorted(directory.glob('*.zip'), reverse=True):
+                meta = archive.with_suffix('.json')
+                try:
+                    record = json.loads(meta.read_text(encoding='utf-8')) if meta.exists() else {}
+                    size = archive.stat().st_size
+                except (OSError, ValueError):
+                    continue
+                item = table.insert('', 'end', values=(date_value(record.get('created'))[0], record.get('folder', archive.name), f'{size / (1024*1024):.1f} MB'))
+                items[item] = archive
+        def chosen():
+            selection = table.selection()
+            return items.get(selection[0]) if selection else None
+        def open_archive():
+            path = chosen()
+            if not path: return
+            self.open_folder_path(str(path))
+        def delete():
+            path = chosen()
+            if not path: return
+            if not messagebox.askyesno('保管した内容を削除', 'このZIPを削除しますか？\n更新前の手元の変更は、このZIPから復元できなくなります。\n' + str(path), parent=popup): return
+            try:
+                path.unlink()
+                path.with_suffix('.json').unlink(missing_ok=True)
+            except OSError as exc:
+                messagebox.showinfo('削除できませんでした', str(exc), parent=popup)
+            reload()
+        ttk.Button(controls, text='ZIPを開く', command=open_archive).pack(side='left', padx=4)
+        ttk.Button(controls, text='選んだ保管内容を削除', command=delete).pack(side='left', padx=4)
+        ttk.Button(controls, text='一覧を更新', command=reload).pack(side='left', padx=4)
+        reload()
 
     def reproduce(self):
         items = self.history.selection()
         if self.busy or not items: return
-        def done(folder):
-            self.load_folders()
-            messagebox.showinfo('再現しました', '新しいフォルダーに保存しました。\n' + folder)
-        self.run('新しいフォルダーへ再現しています…', lambda: self.project.snapshot(items[0]), done)
+        self.reproduce_sha(items[0])
 
     @staticmethod
     def folder_state(folder):
@@ -292,7 +489,7 @@ class App:
             self.check_folder_tab()
 
     def check_folder_tab(self, event=None):
-        if self.project and not self.busy:
+        if self.project and not self.busy and not self.dragging:
             self.load_folders()
 
     def load_folders(self):
@@ -306,8 +503,10 @@ class App:
                 'search': ' '.join((kind, folder, sha, date, created, state)),
                 'sort': {'kind': kind.casefold(), 'path': folder.casefold(), 'sha': sha,
                          'created': timestamp, 'state': state}})
+        versions = {str(Path(r['folder']).resolve()): r for r in self.project.folder_versions()}
         for index, folder in enumerate(self.current.get('work', [])):
-            add('work:' + str(index), '作業用（登録）', folder)
+            record = versions.get(str(Path(folder).resolve()), {})
+            add('work:' + str(index), '作業用（登録）', folder, record.get('sha', ''), record.get('created', ''))
         for record in self.project.snapshots():
             item = 'snapshot:' + record['folder']
             add(item, '再現したフォルダー', record['folder'], record['sha'], record.get('created', ''))
@@ -334,7 +533,7 @@ class App:
         if not record:
             messagebox.showinfo('作業場所が見つかりません',
                                 'フォルダーが削除、または移動されています。\n' + folder +
-                                '\n\n作業用フォルダーは元の履歴が不明なため自動で再現できません。移動先を登録してください。')
+                                '\n\n登録した作業用フォルダーは自動で再作成しません。移動先を登録するか、上の履歴から新しく再現してください。')
             return
         project, sha = self.project, record['sha']
         if not messagebox.askyesno('再現フォルダーが見つかりません',

@@ -14,11 +14,11 @@ class ComparisonCancelled(Exception):
 class GitError(RuntimeError):
     pass
 
-def git(*args, cwd=None):
+def git(*args, cwd=None, env=None):
     try:
         result = subprocess.run(['git', *map(str, args)], cwd=cwd, capture_output=True,
                                 encoding='utf-8', errors='replace', timeout=180,
-                                env={**os.environ, 'GIT_TERMINAL_PROMPT': '0'},
+                                env={**os.environ, 'GIT_TERMINAL_PROMPT': '0', **(env or {})},
                                 creationflags=subprocess.CREATE_NO_WINDOW if os.name == 'nt' else 0)
     except FileNotFoundError as exc:
         raise GitError('Gitが見つかりません。Git for Windowsをインストールしてください。') from exc
@@ -70,14 +70,17 @@ class Project:
         git('checkout', '--detach', sha, cwd=folder)
         # Replace local-cache remote with the real origin for future editing workflows.
         git('remote', 'set-url', 'origin', self.url, cwd=folder)
-        record = {'folder': str(folder), 'sha': sha, 'created': datetime.now().isoformat()}
+        record = {'folder': str(folder), 'sha': sha, 'created': datetime.now().isoformat(), 'kind': 'snapshot'}
         metadata = self.base / 'records'
         metadata.mkdir(exist_ok=True)
         (metadata / (folder.name + '.json')).write_text(json.dumps(record, ensure_ascii=False, indent=2), encoding='utf-8')
         return str(folder)
 
-    def snapshots(self):
+    def folder_versions(self):
         return [json.loads(p.read_text(encoding='utf-8')) for p in sorted((self.base / 'records').glob('*.json'), reverse=True)]
+
+    def snapshots(self):
+        return [record for record in self.folder_versions() if record.get('kind') != 'work']
 
     def compare(self, sha, folder, progress=None, cancelled=None):
         """Compare tracked commit contents with a folder without modifying that folder."""
