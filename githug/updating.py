@@ -103,6 +103,67 @@ class UpdatePlan:
     fingerprint: tuple
     record_path: Path | None
     record: dict | None
+    local_files: tuple
+    local_directories: tuple
+    collisions: tuple
+
+
+def tree_paths(project, sha):
+    raw = git('ls-tree', '-r', '-z', '--name-only', sha, cwd=project.cache)
+    return set(filter(None, raw.split('\0')))
+
+
+def local_additions(project, baseline, sha, fingerprint):
+    if not baseline:
+        return (), (), ()
+    old_files = tree_paths(project, baseline)
+    new_files = tree_paths(project, sha)
+    # Windows paths are case-insensitive. Refuse collisions even when tested elsewhere.
+    old_keys = {name.casefold() for name in old_files}
+    new_keys = {name.casefold() for name in new_files}
+    def parents(name):
+        parts = name.split('/')
+        return ['/'.join(parts[:i]) for i in range(1, len(parts))]
+    old_directories = {parent for name in old_keys for parent in parents(name)}
+    new_directories = {parent for name in new_keys for parent in parents(name)}
+    files, directories, conflicts = [], [], []
+    for row in fingerprint:
+        name, kind = row[:2]
+        key = name.casefold()
+        if key == '.git' or key.startswith('.git/'):
+            continue
+        if key in old_keys or any(parent in old_keys for parent in parents(key)):
+            continue
+        if kind == 'directory':
+            if key in old_directories:
+                continue
+            directories.append(name)
+            if key in new_keys or any(parent in new_keys for parent in parents(key)):
+                conflicts.append(name)
+        else:
+            files.append(name)
+            if key in new_keys or key in new_directories or any(parent in new_keys for parent in parents(key)):
+                conflicts.append(name)
+    return tuple(files), tuple(directories), tuple(conflicts)
+
+
+def copy_local_additions(source, destination, plan, progress=None):
+    # All collisions were checked before copying. Also refuse a link introduced by checkout.
+    for name in (*plan.local_directories, *plan.local_files):
+        target = destination / name
+        for ancestor in (target, *target.parents):
+            if ancestor == destination.parent: break
+            if ancestor.is_symlink() or (ancestor.exists() and getattr(ancestor.lstat(), 'st_file_attributes', 0) & 0x400):
+                raise UpdateConflict('手元のファイルの引き継ぎ先にリンクがあります: ' + name)
+    for name in sorted(plan.local_directories, key=lambda value: value.count('/')):
+        (destination / name).mkdir(parents=True, exist_ok=True)
+    for name in plan.local_files:
+        if progress: progress('手元だけのファイルを引き継いでいます: ' + name)
+        target = destination / name
+        if target.exists():
+            raise UpdateConflict('引き継ぎ先と衝突しています: ' + name)
+        target.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(source / name, target)
 
 
 def inspect_update(project, folder, sha, progress=None):
@@ -169,7 +230,8 @@ def inspect_update(project, folder, sha, progress=None):
         differences = [('元の履歴が不明（変更の有無を判定できません）', '')]
     if inventory(target, progress) != fingerprint:
         raise UpdateConflict('確認中にフォルダーの内容が変更されました。処理中のアプリを閉じてやり直してください。')
-    return UpdatePlan(target, sha, baseline, differences, unknown, fingerprint, record_path, record)
+    files, directories, collisions = local_additions(project, baseline, sha, fingerprint)
+    return UpdatePlan(target, sha, baseline, differences, unknown, fingerprint, record_path, record, files, directories, collisions)
 
 
 def archive_folder(folder, destination, progress=None):
@@ -189,17 +251,22 @@ def archive_folder(folder, destination, progress=None):
         raise
 
 
-def apply_update(project, plan, keep_backup=True, progress=None):
+def apply_update(project, plan, keep_backup=True, progress=None, preserve_local_only=True):
     """Prepare first, then rename on the same filesystem. Never copy over a live target."""
     target = checked_folder(project, plan.folder)
     if target != plan.folder or inventory(target, progress) != plan.fingerprint:
         raise UpdateConflict('確認後にフォルダーの内容が変わりました。変更は行いませんでした。もう一度確認してください。')
+    if preserve_local_only and plan.unknown:
+        raise UpdateConflict('元の履歴が不明なため、手元だけのファイルを判別できません。別フォルダーへの再現、または保管付きの完全な入れ替えを選んでください。')
+    if preserve_local_only and plan.collisions:
+        raise UpdateConflict('手元だけのファイルと選んだ版が衝突しています。更新は行いませんでした。\n' +
+                             '\n'.join(plan.collisions[:20]) + '\n別フォルダーへの再現か、ファイルの移動後に再度更新してください。')
     token = uuid4().hex
     staged = target.parent / ('.githug-staged-' + token)
     previous = target.parent / ('.githug-previous-' + token)
     journal_path = project.base / 'updates' / (token + '.json')
     journal = {'original': str(target), 'previous': str(previous), 'staged': str(staged),
-               'sha': plan.sha, 'state': 'preparing'}
+               'sha': plan.sha, 'state': 'preparing', 'preserve_local_only': preserve_local_only}
     backup = None
     swapped = False
     moved = False
@@ -211,6 +278,8 @@ def apply_update(project, plan, keep_backup=True, progress=None):
         git('clone', '--no-hardlinks', '--no-checkout', project.cache, staged)
         git('checkout', '--detach', plan.sha, cwd=staged)
         git('remote', 'set-url', 'origin', project.url, cwd=staged)
+        if preserve_local_only:
+            copy_local_additions(target, staged, plan, progress)
         if inventory(target, progress) != plan.fingerprint:
             raise UpdateConflict('準備中にファイルが変更されました。変更は行いませんでした。もう一度確認してください。')
         atomic_json(journal_path, journal)
@@ -264,4 +333,4 @@ def apply_update(project, plan, keep_backup=True, progress=None):
         remove_temporary(previous)
     except OSError:
         warning = '更新前の一時フォルダーを片付けられませんでした: ' + str(previous)
-    return {'folder': str(target), 'sha': plan.sha, 'backup': str(backup) if backup else '', 'warning': warning}
+    return {'folder': str(target), 'sha': plan.sha, 'backup': str(backup) if backup else '', 'warning': warning, 'retained': len(plan.local_files) if preserve_local_only else 0}

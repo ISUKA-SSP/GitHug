@@ -46,7 +46,8 @@ class UpdateTests(unittest.TestCase):
         self.assertEqual(Path(result['folder']), self.target)
         self.assertEqual((self.target / 'hello.txt').read_text(), 'new')
         self.assertFalse((self.target / 'old_only.txt').exists())
-        self.assertFalse((self.target / 'private.db').exists())
+        self.assertEqual((self.target / 'private.db').read_bytes(), b'database')
+        self.assertEqual(result['retained'], 1)
         self.assertTrue((self.target / 'new_only.txt').exists())
         with zipfile.ZipFile(result['backup']) as archive:
             self.assertEqual(archive.read('hello.txt'), b'my edit')
@@ -59,7 +60,10 @@ class UpdateTests(unittest.TestCase):
 
     def test_explicit_discard_creates_no_archive(self):
         plan = inspect_update(self.project, self.target, self.new)
-        result = apply_update(self.project, plan, keep_backup=False)
+        (self.target / 'private.db').write_bytes(b'private')
+        plan = inspect_update(self.project, self.target, self.new)
+        result = apply_update(self.project, plan, keep_backup=False, preserve_local_only=False)
+        self.assertFalse((self.target / 'private.db').exists())
         self.assertEqual(result['backup'], '')
         self.assertFalse((self.project.base / 'backups').exists())
         self.assertEqual((self.target / 'hello.txt').read_text(), 'new')
@@ -99,7 +103,9 @@ class UpdateTests(unittest.TestCase):
         (folder / 'personal.txt').write_text('mine')
         plan = inspect_update(self.project, folder, self.new)
         self.assertTrue(plan.unknown)
-        result = apply_update(self.project, plan)
+        with self.assertRaises(UpdateConflict): apply_update(self.project, plan)
+        self.assertEqual((folder / 'personal.txt').read_text(), 'mine')
+        result = apply_update(self.project, plan, preserve_local_only=False)
         with zipfile.ZipFile(result['backup']) as archive:
             self.assertEqual(archive.read('personal.txt'), b'mine')
         self.assertEqual(len(self.project.snapshots()), 1)  # Work folder does not become duplicate snapshot row.
@@ -147,6 +153,56 @@ class UpdateTests(unittest.TestCase):
         with patch('githug.updating.git', side_effect=command):
             with self.assertRaises(UpdateConflict): apply_update(self.project, plan)
         self.assertEqual((self.target / 'hello.txt').read_text(), 'changed while preparing')
+        self.assertEqual(self.project.snapshots()[0]['sha'], self.old)
+
+    def test_default_no_backup_preserves_local_files_but_discards_tracked_edits(self):
+        (self.target / 'hello.txt').write_text('my code change')
+        (self.target / 'notes').mkdir()
+        (self.target / 'notes' / 'mine.txt').write_text('keep notes')
+        (self.target / 'empty_local').mkdir()
+        plan = inspect_update(self.project, self.target, self.new)
+        result = apply_update(self.project, plan, keep_backup=False)
+        self.assertEqual((self.target / 'hello.txt').read_text(), 'new')
+        self.assertFalse((self.target / 'old_only.txt').exists())
+        self.assertEqual((self.target / 'notes' / 'mine.txt').read_text(), 'keep notes')
+        self.assertTrue((self.target / 'empty_local').is_dir())
+        self.assertEqual(result['retained'], 1)
+        self.assertEqual(result['backup'], '')
+
+    def test_local_file_colliding_with_new_tracked_file_stops_without_backup_or_swap(self):
+        (self.target / 'new_only.txt').write_text('mine')
+        plan = inspect_update(self.project, self.target, self.new)
+        self.assertIn('new_only.txt', plan.collisions)
+        with self.assertRaises(UpdateConflict): apply_update(self.project, plan, keep_backup=False)
+        self.assertEqual((self.target / 'new_only.txt').read_text(), 'mine')
+        self.assertEqual((self.target / 'hello.txt').read_text(), 'old')
+        self.assertFalse((self.project.base / 'backups').exists())
+
+    def test_case_insensitive_and_file_directory_collisions(self):
+        (self.target / 'NEW_ONLY.TXT').write_text('Windows case')
+        (self.target / 'new_only.txt').mkdir()
+        (self.target / 'new_only.txt' / 'data').write_text('nested')
+        plan = inspect_update(self.project, self.target, self.new)
+        self.assertIn('NEW_ONLY.TXT', plan.collisions)
+        self.assertIn('new_only.txt', plan.collisions)
+        self.assertIn('new_only.txt/data', plan.collisions)
+        with self.assertRaises(UpdateConflict): apply_update(self.project, plan)
+
+    def test_locally_added_file_is_preserved_even_if_added_to_index(self):
+        (self.target / 'added.txt').write_text('new local file')
+        git('add', 'added.txt', cwd=self.target)
+        plan = inspect_update(self.project, self.target, self.new)
+        self.assertIn('added.txt', plan.local_files)
+        apply_update(self.project, plan, keep_backup=False)
+        self.assertEqual((self.target / 'added.txt').read_text(), 'new local file')
+
+    def test_copy_failure_leaves_original_untouched(self):
+        (self.target / 'private.txt').write_text('private')
+        plan = inspect_update(self.project, self.target, self.new)
+        with patch('githug.updating.shutil.copy2', side_effect=OSError('disk full')):
+            with self.assertRaises(OSError): apply_update(self.project, plan)
+        self.assertEqual((self.target / 'hello.txt').read_text(), 'old')
+        self.assertEqual((self.target / 'private.txt').read_text(), 'private')
         self.assertEqual(self.project.snapshots()[0]['sha'], self.old)
 
     def test_incomplete_update_blocks_another_replacement(self):

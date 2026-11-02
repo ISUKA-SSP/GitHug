@@ -376,8 +376,8 @@ class App:
     def update_dialog(self, project, plan):
         popup = tk.Toplevel(self.window)
         popup.title('このフォルダーを選んだ版に更新')
-        popup.geometry('880x660')
-        popup.minsize(680, 570)
+        popup.geometry('880x720')
+        popup.minsize(680, 650)
         popup.transient(self.window)
         popup.columnconfigure(0, weight=1)
         popup.rowconfigure(3, weight=1)
@@ -386,23 +386,48 @@ class App:
                   ('元の履歴が不明です。現在の内容を保管してからの更新をおすすめします。' if plan.unknown else
                    f'手元の変更・追加など: {len(plan.differences)} 件（元の履歴 {plan.baseline[:8]} との比較）'),
                   padding=(12, 0), wraplength=640).grid(row=1, column=0, sticky='ew')
-        ttk.Label(popup, text='同名ファイルだけの上書きではなく、フォルダー全体を選んだ版に入れ替えます。\n'
-                  '手元だけの設定・DB・実行環境・Git管理情報も入れ替え対象です。関連アプリを閉じてから実行してください。',
+        ttk.Label(popup, text='元の版にあるファイルは選んだ版へ更新し、そのファイルへの手元の編集は引き継ぎません。\n'
+                  '手元だけの追加ファイルは下の選択で残せます。Git管理情報は入れ替えます。関連アプリを閉じてください。',
                   wraplength=640, padding=12).grid(row=2, column=0, sticky='ew')
         table = self.table(popup, ('state', 'path'), ('確認内容', 'ファイル／場所'), grid_row=3)
         for row in plan.differences[:1000]: table.insert('', 'end', values=row)
         if len(plan.differences) > 1000: table.insert('', 'end', values=('表示は先頭1000件までです', ''))
         if not plan.differences: table.insert('', 'end', values=('ファイル内容に手元の変更はありません', ''))
-        ttk.Label(popup, text='「保管」は更新前のフォルダー全体をZIPにまとめます。\n'
-                  '「保管した内容」から確認・削除できます。自分の変更を新しい版へ自動で混ぜる操作ではありません。',
-                  padding=12, wraplength=640).grid(row=4, column=0, sticky='ew')
+        options = ttk.Frame(popup, padding=12)
+        options.grid(row=4, column=0, sticky='ew')
+        retain = tk.BooleanVar(value=not plan.unknown)
+        checkbox = ttk.Checkbutton(options, text=f'手元だけのファイルを残す（{len(plan.local_files)} 件）', variable=retain)
+        checkbox.pack(anchor='w')
+        if plan.unknown:
+            checkbox.configure(state='disabled')
+            text = '元の履歴が不明なため、手元だけのファイルを判別できません。別フォルダーへの再現か、保管しての入れ替えを選んでください。'
+        elif plan.collisions:
+            text = f'選んだ版との衝突が {len(plan.collisions)} 件あります。残す設定のままでは更新せずに案内します。'
+        else:
+            text = '残す対象には無視対象の設定・DB・実行環境も含みます。元の版で管理されていたファイルは対象外です。'
+        ttk.Label(options, text=text, wraplength=640, style='Muted.TLabel').pack(anchor='w', pady=4)
+        ttk.Label(options, text='「保管」は更新前の全体をZIPにまとめます。自分の編集を新しいコードへ混ぜる操作ではありません。',
+                  wraplength=640, style='Muted.TLabel').pack(anchor='w')
         buttons = ttk.Frame(popup, padding=12)
         buttons.grid(row=5, column=0, sticky='ew')
         buttons.columnconfigure(0, weight=1)
         buttons.columnconfigure(1, weight=1)
         def execute(keep):
-            if not keep and not messagebox.askyesno('保管せずに更新しますか？',
-                    '現在の内容を保管せずに入れ替えます。\n手元の変更・追加ファイル・Git管理情報は元に戻せません。\n' + str(plan.folder), parent=popup):
+            preserve = retain.get()
+            if preserve and plan.collisions:
+                messagebox.showinfo('手元のファイルと衝突しています',
+                    '同じ場所に選んだ版のファイルがあるため、更新を止めています。\n' +
+                    '\n'.join(plan.collisions[:20]) +
+                    '\n\n別フォルダーに再現するか、手元のファイルを別の場所に移してから確認し直してください。', parent=popup)
+                return
+            if not keep:
+                detail = ('手元だけのファイルは残しますが、元の版にあるファイルへの編集とGit管理情報は元に戻せません。'
+                          if preserve else '手元の変更・追加ファイル・Git管理情報は元に戻せません。')
+                if not messagebox.askyesno('保管せずに更新しますか？',
+                        '現在の内容を保管せずに更新します。\n' + detail + '\n' + str(plan.folder), parent=popup):
+                    return
+            elif not preserve and not messagebox.askyesno('追加ファイルも入れ替えます',
+                    '「手元だけのファイルを残す」がOFFです。\n追加ファイルも更新先から取り除きます（保管ZIPには残ります）。\n続けますか？', parent=popup):
                 return
             popup.destroy()
             def progress(note): self.operation_note = note
@@ -410,15 +435,16 @@ class App:
                 self.folder_query.set('')
                 self.load_folders()
                 detail = '同じ場所を選んだ版に更新しました。\n' + result['folder']
+                detail += f"\n手元だけのファイルを引き継ぎ: {result['retained']} 件"
                 if result['backup']: detail += '\n\n更新前の内容: ' + result['backup']
                 if result['warning']: detail += '\n\n' + result['warning']
                 messagebox.showinfo('更新しました', detail)
-            self.run('選んだ版に更新しています…', lambda: apply_update(project, plan, keep, progress), done)
+            self.run('選んだ版に更新しています…', lambda: apply_update(project, plan, keep, progress, preserve_local_only=preserve), done)
         def separate():
             popup.destroy()
             self.reproduce_sha(plan.sha)
         ttk.Button(buttons, text='今の内容を保管して更新', command=lambda: execute(True)).grid(row=0, column=0, sticky='ew', padx=4, pady=4)
-        ttk.Button(buttons, text='変更を破棄して更新' if plan.differences else '保管せず更新', command=lambda: execute(False)).grid(row=0, column=1, sticky='ew', padx=4, pady=4)
+        ttk.Button(buttons, text='手元の編集を破棄して更新（保管なし）', command=lambda: execute(False)).grid(row=0, column=1, sticky='ew', padx=4, pady=4)
         ttk.Button(buttons, text='別フォルダーに再現', command=separate).grid(row=1, column=0, sticky='ew', padx=4, pady=4)
         ttk.Button(buttons, text='キャンセル', command=popup.destroy).grid(row=1, column=1, sticky='ew', padx=4, pady=4)
         popup.grab_set()

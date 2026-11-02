@@ -42,6 +42,8 @@ def apply_dark_theme(window):
     style.configure('TButton', background=PANEL, foreground=TEXT, padding=(10, 6))
     style.map('TButton', background=[('pressed', ACCENT), ('active', '#2b3745')],
               foreground=[('disabled', '#707986')])
+    style.configure('TCheckbutton', background=BG, foreground=TEXT, indicatorbackground=FIELD, padding=4)
+    style.map('TCheckbutton', background=[('active', BG)], foreground=[('disabled', MUTED)])
     style.configure('TEntry', fieldbackground=FIELD, foreground=TEXT, insertcolor=TEXT, padding=5)
     style.map('TEntry', fieldbackground=[('readonly', PANEL)],
               selectbackground=[('!disabled', ACCENT)], selectforeground=[('!disabled', '#ffffff')])
