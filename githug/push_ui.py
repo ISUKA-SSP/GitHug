@@ -178,7 +178,7 @@ class PushUI:
         ttk.Button(commands, text='選んだ差分を見る', command=preview).pack(side='left', padx=4)
         ttk.Button(commands, text='AIに説明を頼む（任意）', command=ask_ai).pack(side='left', padx=4)
         ttk.Button(commands, text='キャンセル', command=cancel).pack(side='right', padx=4)
-        ttk.Button(commands, text='記録してGitHubへ送る', command=send).pack(side='right', padx=4)
+        ttk.Button(commands, text='記録してGitHubへ送る', command=send, style='Primary.TButton').pack(side='right', padx=4)
         popup.grab_set()
 
     def text_view(self, title, text):
@@ -275,7 +275,7 @@ class PushUI:
             key.set('')
             popup.destroy()
             if parent.winfo_exists(): parent.grab_set()
-        ttk.Button(buttons, text='この内容をGeminiへ送って説明', command=request).pack(side='left', padx=4)
+        ttk.Button(buttons, text='この内容をGeminiへ送って説明', command=request, style='Primary.TButton').pack(side='left', padx=4)
         ttk.Button(buttons, text='説明を変更の説明欄へコピー', command=use).pack(side='left', padx=4)
         ttk.Button(buttons, text='閉じる', command=close).pack(side='right', padx=4)
         popup.protocol('WM_DELETE_WINDOW', close)

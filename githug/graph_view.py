@@ -3,7 +3,7 @@ import tkinter as tk
 from tkinter import ttk
 from tkinter import font as tkfont
 
-BG = '#11151a'
+BG = '#0e1824'
 
 
 class GraphView:
@@ -114,5 +114,5 @@ class GraphView:
             if sha == self.selected:
                 canvas.create_oval(x(row.lane)-10, center-10, x(row.lane)+10, center+10, outline=row.color, width=1)
         left = canvas.canvasx(0)
-        canvas.create_rectangle(left, 0, left + canvas.winfo_width(), heading, fill='#1d2229', outline='')
+        canvas.create_rectangle(left, 0, left + canvas.winfo_width(), heading, fill='#192a3b', outline='')
         canvas.create_text(left+10, max(10, heading/2), anchor='w', text='分岐・合流', fill='#c7d7e8', font=('Yu Gothic UI', 10))

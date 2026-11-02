@@ -2,13 +2,13 @@
 import tkinter as tk
 from tkinter import ttk
 
-BG = '#15181d'
-PANEL = '#1d2229'
-FIELD = '#11151a'
-TEXT = '#d7dce4'
-MUTED = '#a5afbd'
-BORDER = '#38414e'
-ACCENT = '#315e86'
+BG = '#0b121b'
+PANEL = '#121e2b'
+FIELD = '#0e1824'
+TEXT = '#dce7f1'
+MUTED = '#90a5bb'
+BORDER = '#283c50'
+ACCENT = '#245e73'
 
 
 def check_indicators(window, style):
@@ -56,15 +56,26 @@ def apply_dark_theme(window):
         window.option_add(option, value)
     style.configure('.', background=BG, foreground=TEXT, bordercolor=BORDER,
                     lightcolor=BORDER, darkcolor=BORDER, font=('Yu Gothic UI', 10))
-    style.configure('TFrame', background=BG)
-    style.configure('TLabel', background=BG, foreground=TEXT)
+    style.configure('TFrame', background=PANEL)
+    style.configure('Appbar.TFrame', background=BG)
+    style.configure('Card.TFrame', background=PANEL, bordercolor=BORDER, borderwidth=1, relief='solid')
+    style.configure('TLabel', background=PANEL, foreground=TEXT)
+    style.configure('Brand.TLabel', background=BG, foreground='#eef8fb', font=('Segoe UI', 23, 'bold'))
+    style.configure('BrandSubtitle.TLabel', background=BG, foreground=MUTED, font=('Yu Gothic UI', 9))
+    style.configure('Badge.TLabel', background=PANEL, foreground='#80d5d3', padding=(9,4), font=('Segoe UI',9))
+    style.configure('AppbarMuted.TLabel', background=BG, foreground=MUTED)
     style.configure('Heading.TLabel', font=('Yu Gothic UI', 12, 'bold'), foreground='#ecf0f6')
     style.configure('Muted.TLabel', foreground=MUTED)
-    style.configure('TButton', background=PANEL, foreground=TEXT, padding=(10, 6))
-    style.map('TButton', background=[('pressed', ACCENT), ('active', '#2b3745')],
+    style.configure('TButton', background='#1b2c3e', foreground=TEXT, padding=(12, 7), relief='flat', borderwidth=1)
+    style.map('TButton', background=[('pressed', ACCENT), ('active', '#29445b')],
               foreground=[('disabled', '#707986')])
-    style.configure('TCheckbutton', background=BG, foreground=TEXT, indicatorbackground=FIELD, padding=4)
-    style.map('TCheckbutton', background=[('active', BG)], foreground=[('disabled', MUTED)])
+    style.configure('Primary.TButton', background='#216c79', foreground='#f3fffe', padding=(14,7), relief='flat')
+    style.map('Primary.TButton', background=[('pressed','#1c5864'),('active','#2c8390'),('disabled','#233846')], foreground=[('disabled',MUTED)])
+    style.configure('Quiet.TButton', background=PANEL, foreground=MUTED, padding=(10,7), relief='flat')
+    style.configure('Danger.TButton', background='#392630', foreground='#f7c1c7', padding=(12,7), relief='flat')
+    style.map('Danger.TButton', background=[('active','#56323f')])
+    style.configure('TCheckbutton', background=PANEL, foreground=TEXT, indicatorbackground=FIELD, padding=4)
+    style.map('TCheckbutton', background=[('active', PANEL)], foreground=[('disabled', MUTED)])
     style.configure('TEntry', fieldbackground=FIELD, foreground=TEXT, insertcolor=TEXT, padding=5)
     style.map('TEntry', fieldbackground=[('readonly', PANEL)],
               selectbackground=[('!disabled', ACCENT)], selectforeground=[('!disabled', '#ffffff')])
@@ -72,10 +83,10 @@ def apply_dark_theme(window):
     style.map('TCombobox', fieldbackground=[('readonly', FIELD)], foreground=[('readonly', TEXT)],
               selectbackground=[('readonly', ACCENT)], selectforeground=[('readonly', '#ffffff')])
     style.configure('Treeview', background=FIELD, fieldbackground=FIELD, foreground=TEXT,
-                    rowheight=27, borderwidth=0)
+                    rowheight=30, borderwidth=0)
     style.map('Treeview', background=[('selected', ACCENT)], foreground=[('selected', '#ffffff')])
-    style.configure('Treeview.Heading', background=PANEL, foreground=TEXT, padding=(8, 6), relief='flat')
-    style.map('Treeview.Heading', background=[('active', '#2b3745')])
+    style.configure('Treeview.Heading', background='#192a3b', foreground='#b9ccde', padding=(10, 8), relief='flat')
+    style.map('Treeview.Heading', background=[('active', '#29445b')])
     style.configure('TPanedwindow', background=BORDER, sashwidth=8)
     for direction in ('Vertical', 'Horizontal'):
         style.configure(direction + '.TScrollbar', background='#434f5e', troughcolor=BG,
@@ -83,4 +94,9 @@ def apply_dark_theme(window):
         style.map(direction + '.TScrollbar', background=[('active', '#61758b')])
         style.configure(direction + '.TProgressbar', background='#5592c5', troughcolor=FIELD)
     check_indicators(window, style)
+    from .platform_support import dark_titlebar
+    def mapped(event):
+        if event.widget is window or isinstance(event.widget, tk.Toplevel):
+            dark_titlebar(event.widget)
+    window.bind_all('<Map>', mapped, add='+')
     return style

@@ -146,7 +146,11 @@ class UpdateTests(unittest.TestCase):
     def test_protected_directories_and_links_refused(self):
         for folder in (self.project.base, self.project.cache, self.project.base.parent):
             with self.assertRaises(UpdateConflict): inspect_update(self.project, folder, self.new)
-        (self.target / 'link').symlink_to(self.root / 'source', target_is_directory=True)
+        try:
+            (self.target / 'link').symlink_to(self.root / 'source', target_is_directory=True)
+        except OSError as error:
+            if getattr(error, 'winerror', None) == 1314: self.skipTest('Windows symlink privilege unavailable')
+            raise
         with self.assertRaises(UpdateConflict): inspect_update(self.project, self.target, self.new)
 
     def test_ignored_files_are_included_in_backup_and_warning(self):
@@ -209,10 +213,13 @@ class UpdateTests(unittest.TestCase):
 
     def test_case_insensitive_and_file_directory_collisions(self):
         (self.target / 'NEW_ONLY.TXT').write_text('Windows case')
+        plan = inspect_update(self.project, self.target, self.new)
+        self.assertIn('NEW_ONLY.TXT', plan.collisions)
+        with self.assertRaises(UpdateConflict): apply_update(self.project, plan)
+        (self.target / 'NEW_ONLY.TXT').unlink()
         (self.target / 'new_only.txt').mkdir()
         (self.target / 'new_only.txt' / 'data').write_text('nested')
         plan = inspect_update(self.project, self.target, self.new)
-        self.assertIn('NEW_ONLY.TXT', plan.collisions)
         self.assertIn('new_only.txt', plan.collisions)
         self.assertIn('new_only.txt/data', plan.collisions)
         with self.assertRaises(UpdateConflict): apply_update(self.project, plan)

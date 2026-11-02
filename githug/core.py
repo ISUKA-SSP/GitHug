@@ -7,6 +7,7 @@ import re
 import subprocess
 from datetime import datetime
 from uuid import uuid4
+from .platform_support import git_executable
 
 class ComparisonCancelled(Exception):
     pass
@@ -16,7 +17,7 @@ class GitError(RuntimeError):
 
 def git(*args, cwd=None, env=None, input_text=None, allowed_returncodes=(0,)):
     try:
-        result = subprocess.run(['git', *map(str, args)], cwd=cwd, capture_output=True,
+        result = subprocess.run([git_executable(), *map(str, args)], cwd=cwd, capture_output=True,
                                 encoding='utf-8', errors='replace', timeout=180, input=input_text,
                                 env={**os.environ, 'GIT_TERMINAL_PROMPT': '0', **(env or {})},
                                 creationflags=subprocess.CREATE_NO_WINDOW if os.name == 'nt' else 0)

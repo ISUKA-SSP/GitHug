@@ -21,6 +21,7 @@ from .push_ui import PushUI
 from .history_graph import HistoryGraph, history_page
 from .graph_view import GraphView
 from .drag_hint import DragHint
+from .branding import attach_logo
 
 class App:
     def __init__(self, window):
@@ -28,7 +29,8 @@ class App:
         self.style = apply_dark_theme(window)
         window.title(f'GitHug {__version__} — 履歴から、安心して試す')
         window.geometry('1360x900')
-        window.minsize(1050, 760)
+        window.minsize(1100, 800)
+        logo = attach_logo(window)
         self.config_path = Path(os.environ.get('APPDATA', Path.home() / '.config')) / 'GitHug' / 'settings.json'
         try:
             self.config = json.loads(self.config_path.read_text(encoding='utf-8'))
@@ -49,29 +51,45 @@ class App:
         if self.history_page_size not in (50, 100, 200): self.history_page_size = 100
         self.drag_hint = DragHint(window)
         self.events = queue.Queue()
-        toolbar = ttk.Frame(window, padding=12)
-        toolbar.pack(fill='x')
-        ttk.Label(toolbar, text='GitHug', font=('Segoe UI', 22, 'bold')).pack(side='left', padx=(0, 24))
-        for title, command in [('保存先を選ぶ', self.choose_root), ('プロジェクトを追加', self.add), ('更新を確認', self.refresh)]:
-            ttk.Button(toolbar, text=title, command=command).pack(side='left', padx=4)
-        self.status = tk.StringVar(value='プロジェクトを追加して始めましょう。既存の作業フォルダーは書き換えません。')
-        ttk.Label(window, textvariable=self.status, padding=10, wraplength=1250).pack(fill='x', side='bottom')
-        self.activity_bar = ttk.Progressbar(toolbar, mode='indeterminate', length=100)
-        self.activity_bar.pack(side='right', padx=8)
+        appbar = ttk.Frame(window, padding=(20,14), style='Appbar.TFrame')
+        appbar.pack(fill='x')
+        ttk.Label(appbar, image=logo, style='AppbarMuted.TLabel').pack(side='left', padx=(0,12))
+        brand = ttk.Frame(appbar, style='Appbar.TFrame')
+        brand.pack(side='left')
+        ttk.Label(brand, text='GitHug', style='Brand.TLabel').pack(anchor='w')
+        ttk.Label(brand, text='履歴から、安心して試す', style='BrandSubtitle.TLabel').pack(anchor='w')
+        ttk.Label(appbar, text='v' + __version__, style='Badge.TLabel').pack(side='left', padx=16)
+        self.operation_state = tk.StringVar(value='待機中')
+        ttk.Button(appbar, text='使い方・環境', command=self.guide, style='Quiet.TButton').pack(side='right')
+        self.activity_bar = ttk.Progressbar(appbar, mode='indeterminate', length=90)
+        self.activity_bar.pack(side='right', padx=12)
+        ttk.Label(appbar, textvariable=self.operation_state, style='AppbarMuted.TLabel').pack(side='right')
+        toolbar = ttk.Frame(window, padding=(14,10), style='Card.TFrame')
+        toolbar.pack(fill='x', padx=16, pady=(0,12))
+        ttk.Button(toolbar, text='更新を確認', command=self.refresh, style='Primary.TButton').pack(side='left', padx=4)
+        ttk.Button(toolbar, text='＋ プロジェクト', command=self.add).pack(side='left', padx=4)
         ttk.Button(toolbar, text='保管した内容', command=self.backups_dialog).pack(side='left', padx=4)
+        ttk.Button(toolbar, text='保存先', command=self.choose_root, style='Quiet.TButton').pack(side='right', padx=4)
+        self.status = tk.StringVar(value='「＋ プロジェクト」からGitHubのURLを追加して始めましょう。')
+        footer=ttk.Frame(window,padding=(12,7),style='Card.TFrame')
+        footer.pack(fill='x',side='bottom',padx=16,pady=(8,12))
+        status_label=ttk.Label(footer,textvariable=self.status,style='Muted.TLabel',wraplength=1250)
+        status_label.pack(fill='x')
+        status_label.bind('<Configure>',lambda event:status_label.configure(wraplength=max(100,event.width-4)))
         split = ttk.Panedwindow(window, orient='horizontal')
-        split.pack(fill='both', expand=True, padx=12, pady=8)
-        left = ttk.Frame(split, padding=8)
+        split.pack(fill='both', expand=True, padx=16)
+        left = ttk.Frame(split, padding=12, style='Card.TFrame')
         split.add(left, weight=1)
         ttk.Label(left, text='プロジェクト', font=('', 12, 'bold')).pack(anchor='w')
-        self.projects = tk.Listbox(left, exportselection=False, width=25)
+        self.projects = tk.Listbox(left, exportselection=False, width=22, font=('Yu Gothic UI',11), activestyle='none', selectborderwidth=0)
         self.projects.pack(fill='both', expand=True, pady=8)
         self.projects.bind('<<ListboxSelect>>', self.select_project)
+        ttk.Label(left,text='上：GitHubの履歴\n下：PCの作業場所\nドラッグで行き来できます',style='Muted.TLabel',wraplength=170).pack(anchor='w',pady=(8,0))
         right = ttk.Frame(split)
         split.add(right, weight=5)
         self.sections = ttk.Panedwindow(right, orient='vertical')
         self.sections.pack(fill='both', expand=True)
-        history_tab = ttk.Frame(self.sections, padding=8)
+        history_tab = ttk.Frame(self.sections, padding=12, style='Card.TFrame')
         history_tab.columnconfigure(0, weight=1)
         history_tab.rowconfigure(4, weight=1, minsize=70)
         self.sections.add(history_tab, weight=3)
@@ -94,9 +112,9 @@ class App:
         ttk.Label(history_tab, textvariable=self.selection, wraplength=850, style='Muted.TLabel').grid(row=5, column=0, sticky='ew', pady=4)
         controls = ttk.Frame(history_tab)
         controls.grid(row=6, column=0, sticky='ew')
-        ttk.Button(controls, text='この時点を新しいフォルダーに再現', command=self.reproduce).pack(side='left', padx=4)
+        ttk.Button(controls, text='この時点を新しいフォルダーに再現', command=self.reproduce, style='Primary.TButton').pack(side='left', padx=4)
         ttk.Button(controls, text='作業フォルダーと比較', command=self.compare).pack(side='left', padx=4)
-        folders = ttk.Frame(self.sections, padding=8)
+        folders = ttk.Frame(self.sections, padding=12, style='Card.TFrame')
         folders.columnconfigure(0, weight=1)
         folders.rowconfigure(3, weight=1, minsize=70)
         self.sections.add(folders, weight=2)
@@ -124,6 +142,26 @@ class App:
         self.populate_projects()
         window.after(150, lambda: self.sections.sashpos(0, int(self.sections.winfo_height() * 0.60)))
         window.after(100, self.poll)
+
+    def guide(self):
+        from .platform_support import git_executable
+        popup=tk.Toplevel(self.window)
+        popup.title('GitHug — 使い方・環境')
+        popup.geometry('760x540')
+        popup.minsize(600,450)
+        ttk.Label(popup,text='GitHug  '+__version__,style='Heading.TLabel',padding=16).pack(anchor='w')
+        text=(
+            '1  プロジェクトを追加：GitHubのURLを登録します。\n'
+            '2  履歴からPCへドラッグ：別フォルダーへの再現や、確認付きの更新。\n'
+            '3  PCから履歴へドラッグ：ファイルを確認してGitHubへ送信。\n\n'
+            '検索は全履歴と自分用メモが対象です。選んだ履歴をグラフで見る操作で、その流れへ戻れます。\n'
+            '自分用メモ・VS Code・PowerShellは、行の右クリックから開けます。\n'
+            '同じ場所への更新は、GitHugの再現フォルダーか、明示的に有効にした作業用だけです。\n\n'
+            '公開プロジェクトの取得にはログイン不要です。送信・非公開プロジェクトにはPC側のGitHub認証が必要です。\n'
+            'Geminiは任意。説明を頼むボタンを押すまで呼び出しません。\n\n'
+            '使用するGit：'+git_executable()+'\n設定：'+str(self.config_path))
+        ttk.Label(popup,text=text,wraplength=700,padding=(16,0),justify='left').pack(fill='both',expand=True)
+        ttk.Button(popup,text='閉じる',command=popup.destroy).pack(anchor='e',padx=16,pady=16)
 
     def search_bar(self, parent, description, grid_row=None):
         frame = ttk.Frame(parent)
@@ -186,7 +224,7 @@ class App:
         size.grid(row=0, column=5, padx=(10, 4))
         size.bind('<<ComboboxSelected>>', lambda event: self.resize_history_page())
         ttk.Label(bar, text='件／ページ').grid(row=0, column=6)
-        ttk.Button(bar, text='履歴の流れで見る', command=self.jump_to_history_graph).grid(row=0, column=7, padx=8)
+        ttk.Button(bar, text='選んだ履歴をグラフで見る', command=self.jump_to_history_graph).grid(row=0, column=7, padx=8)
         ttk.Label(bar, textvariable=self.history_mode_text, style='Muted.TLabel', wraplength=850).grid(row=1, column=0, columnspan=8, sticky='w', pady=(4, 0))
 
     def move_history_page(self, step):
@@ -244,7 +282,7 @@ class App:
         self.older_button.configure(state='normal' if page.page + 1 < page.pages else 'disabled')
         self.history_count.set(f'{page.matches} / {page.total} 件')
         self.history_mode_text.set('グラフ：つながり順。上下の矢印は表示範囲外へ続きます。' if graph_mode else
-                                   '検索・並べ替え中は線を省略。履歴を選び「履歴の流れで見る」で該当位置へ戻れます。')
+                                   '検索・並べ替え中は線を省略。履歴を選び「選んだ履歴をグラフで見る」で該当位置へ戻れます。')
         self.selection.set('')
         self.detail()
 
@@ -351,6 +389,8 @@ class App:
     def run(self, description, task, callback):
         if self.busy: return
         self.busy = True
+        self.projects.configure(state='disabled')
+        self.operation_state.set('処理中')
         self.operation_label = description
         self.operation_note = ''
         self.operation_started = time.monotonic()
@@ -365,6 +405,8 @@ class App:
         try:
             callback, result, error = self.events.get_nowait()
             self.busy = False
+            self.projects.configure(state='normal')
+            self.operation_state.set('待機中')
             self.activity_bar.stop()
             if error:
                 self.status.set('操作を完了できませんでした。案内を確認してください。')
@@ -466,7 +508,7 @@ class App:
                 messagebox.showinfo('メモを保存できませんでした', str(exc), parent=popup)
                 return
             popup.destroy()
-        ttk.Button(buttons, text='保存', command=save).pack(side='right', padx=4)
+        ttk.Button(buttons, text='保存', command=save, style='Primary.TButton').pack(side='right', padx=4)
         ttk.Button(buttons, text='キャンセル', command=popup.destroy).pack(side='right', padx=4)
         ttk.Label(buttons, text='空欄にして保存するとメモを削除します。', style='Muted.TLabel').pack(side='left')
         popup.grab_set()
@@ -751,8 +793,8 @@ class App:
         def separate():
             popup.destroy()
             self.reproduce_sha(plan.sha)
-        ttk.Button(buttons, text='今の内容を保管して更新', command=lambda: execute(True)).grid(row=0, column=0, sticky='ew', padx=4, pady=4)
-        ttk.Button(buttons, text='手元の編集を破棄して更新（保管なし）', command=lambda: execute(False)).grid(row=0, column=1, sticky='ew', padx=4, pady=4)
+        ttk.Button(buttons, text='今の内容を保管して更新', command=lambda: execute(True), style='Primary.TButton').grid(row=0, column=0, sticky='ew', padx=4, pady=4)
+        ttk.Button(buttons, text='手元の編集を破棄して更新（保管なし）', command=lambda: execute(False), style='Danger.TButton').grid(row=0, column=1, sticky='ew', padx=4, pady=4)
         ttk.Button(buttons, text='別フォルダーに再現', command=separate).grid(row=1, column=0, sticky='ew', padx=4, pady=4)
         ttk.Button(buttons, text='キャンセル', command=popup.destroy).grid(row=1, column=1, sticky='ew', padx=4, pady=4)
         popup.grab_set()
@@ -1058,7 +1100,10 @@ class App:
         self.run('手元のファイルを比較しています…', task, done)
         update_progress()
 
+def main(argv=None):
+    from .runtime import launch
+    return launch(App, argv)
+
+
 if __name__ == '__main__':
-    root = tk.Tk()
-    App(root)
-    root.mainloop()
+    raise SystemExit(main())
