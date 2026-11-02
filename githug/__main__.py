@@ -14,6 +14,7 @@ from . import __version__
 from .listing import date_value, visible_rows
 from .theme import apply_dark_theme
 from .updating import inspect_update, apply_update
+from .push_ui import PushUI
 
 class App:
     def __init__(self, window):
@@ -29,6 +30,7 @@ class App:
             self.config = {'root': '', 'projects': []}
         self.project = None
         self.dragging = None
+        self.push_ui = PushUI(self)
         self.busy = False
         self.records = {}
         self.history_rows = []
@@ -86,6 +88,9 @@ class App:
         self.folders = self.table(folders, ('kind', 'path', 'sha', 'created', 'state'), ('種類', '保存場所', '元の履歴', '再現した日時', '状態'), grid_row=3)
         self.folders.configure(displaycolumns=('sha', 'created', 'state', 'path'))
         self.folders.bind('<Button-3>', self.folder_menu)
+        self.folders.bind('<ButtonPress-1>', self.folder_press, add='+')
+        self.folders.bind('<B1-Motion>', self.folder_motion, add='+')
+        self.folders.bind('<ButtonRelease-1>', self.folder_release, add='+')
         self.window.bind('<FocusIn>', self.on_window_focus, add='+')
         folder_controls = ttk.Frame(folders)
         folder_controls.grid(row=4, column=0, sticky='ew', pady=(6, 0))
@@ -130,7 +135,7 @@ class App:
         selected = table.selection()
         table.delete(*table.get_children())
         column, descending = self.sort_options[name]
-        shown = visible_rows(rows, query.get(), column, descending)
+        shown = visible_rows(rows, query.get(), column, descending, pinned_first=(name == 'folders'))
         for row in shown:
             table.insert('', 'end', iid=row['id'], text=row.get('text', ''), values=row['values'])
         for col, label in table.sort_labels.items():
@@ -285,6 +290,49 @@ class App:
         menu.add_command(label='作業フォルダーと比較', command=self.compare)
         menu.add_command(label='選んだフォルダーをこの版に更新', command=self.update_selected)
         menu.tk_popup(event.x_root, event.y_root)
+
+    def send_selected_folder(self):
+        if self.busy or not self.project: return
+        items = self.folders.selection()
+        if not items:
+            messagebox.showinfo('送信元を選択', 'PCのフォルダーを選んでください。')
+            return
+        self.push_ui.begin(self.folders.item(items[0], 'values')[1])
+
+    def folder_press(self, event):
+        self.dragging = None
+        if self.busy or not self.project or self.folders.identify_region(event.x, event.y) != 'cell': return
+        item = self.folders.identify_row(event.y)
+        if item:
+            self.dragging = {'direction': 'push', 'folder': self.folders.item(item, 'values')[1],
+                             'project': self.project, 'x': event.x_root, 'y': event.y_root, 'active': False}
+
+    def folder_motion(self, event):
+        drag = self.dragging
+        if not drag or drag.get('direction') != 'push': return
+        if abs(event.x_root - drag['x']) + abs(event.y_root - drag['y']) < 8: return
+        drag['active'] = True
+        self.folders.configure(cursor='fleur')
+        target = self.window.winfo_containing(event.x_root, event.y_root)
+        if target is self.history:
+            y = event.y_root - self.history.winfo_rooty()
+            item = self.history.identify_row(y)
+            if item: self.history.selection_set(item)
+            self.status.set('ここで離すと、送信する変更と送信先を確認します。まだGitHubへは送りません。')
+        else:
+            self.status.set('GitHubの履歴へドラッグすると、送信する変更を確認できます。')
+
+    def folder_release(self, event):
+        drag = self.dragging
+        self.dragging = None
+        self.folders.configure(cursor='')
+        if not drag or drag.get('direction') != 'push' or not drag['active'] or self.busy or self.project is not drag['project']: return
+        if self.window.winfo_containing(event.x_root, event.y_root) is not self.history: return
+        x = event.x_root - self.history.winfo_rootx()
+        y = event.y_root - self.history.winfo_rooty()
+        if self.history.identify_region(x, y) in ('heading', 'separator'): return
+        item = self.history.identify_row(y)
+        self.push_ui.begin(drag['folder'], item or None)
 
     def history_press(self, event):
         self.dragging = None
@@ -525,7 +573,7 @@ class App:
             state = self.folder_state(folder)
             date, timestamp = date_value(created)
             self.folder_rows.append({
-                'id': item, 'values': (kind, folder, sha[:8], date, state),
+                'id': item, 'pinned': kind == '作業用（登録）', 'values': (kind, folder, sha[:8], date, state),
                 'search': ' '.join((kind, folder, sha, date, created, state)),
                 'sort': {'kind': kind.casefold(), 'path': folder.casefold(), 'sha': sha,
                          'created': timestamp, 'state': state}})
@@ -605,6 +653,7 @@ class App:
         menu = tk.Menu(self.window, tearoff=False)
         menu.add_command(label='フォルダーを開く', command=self.open_folder)
         menu.add_command(label='PowerShellで開く／コマンドを実行', command=self.command_dialog)
+        menu.add_command(label='変更を確認してGitHubへ送る', command=self.send_selected_folder)
         try:
             menu.tk_popup(event.x_root, event.y_root)
         finally:

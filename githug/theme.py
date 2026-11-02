@@ -1,4 +1,5 @@
 """Dark colors for ttk and classic Tk widgets, with no extra dependencies."""
+import tkinter as tk
 from tkinter import ttk
 
 BG = '#15181d'
@@ -8,6 +9,26 @@ TEXT = '#d7dce4'
 MUTED = '#a5afbd'
 BORDER = '#38414e'
 ACCENT = '#315e86'
+
+
+def check_indicators(window, style):
+    images = []
+    for selected, disabled in ((False, False), (True, False), (False, True), (True, True)):
+        image = tk.PhotoImage(master=window, width=22, height=22)
+        image.put(BG, to=(0, 0, 22, 22))
+        image.put('#68788a' if disabled else '#b6c6d8', to=(2, 2, 20, 20))
+        image.put(('#46708d' if disabled else '#287db5') if selected else FIELD, to=(4, 4, 18, 18))
+        if selected:
+            for x,y in [(6,10),(7,11),(8,12),(9,13),(10,12),(11,11),(12,10),(13,9),(14,8),(15,7)]:
+                image.put('#e4eaf0' if disabled else '#ffffff', to=(x, y, x+2, y+2))
+        images.append(image)
+    style.element_create('HugCheck.indicator', 'image', images[0],
+                         ('disabled', 'selected', images[3]), ('disabled', images[2]), ('selected', images[1]))
+    style.layout('TCheckbutton', [('Checkbutton.padding', {'sticky':'nswe', 'children':[
+        ('HugCheck.indicator', {'side':'left', 'sticky':''}),
+        ('Checkbutton.focus', {'side':'left', 'sticky':'nswe', 'children':[
+            ('Checkbutton.label', {'sticky':'nswe'})]})]})])
+    window._githug_check_images = images  # Keep Tcl image handles alive.
 
 
 def apply_dark_theme(window):
@@ -47,6 +68,9 @@ def apply_dark_theme(window):
     style.configure('TEntry', fieldbackground=FIELD, foreground=TEXT, insertcolor=TEXT, padding=5)
     style.map('TEntry', fieldbackground=[('readonly', PANEL)],
               selectbackground=[('!disabled', ACCENT)], selectforeground=[('!disabled', '#ffffff')])
+    style.configure('TCombobox', fieldbackground=FIELD, background=PANEL, foreground=TEXT, arrowcolor=TEXT, padding=5)
+    style.map('TCombobox', fieldbackground=[('readonly', FIELD)], foreground=[('readonly', TEXT)],
+              selectbackground=[('readonly', ACCENT)], selectforeground=[('readonly', '#ffffff')])
     style.configure('Treeview', background=FIELD, fieldbackground=FIELD, foreground=TEXT,
                     rowheight=27, borderwidth=0)
     style.map('Treeview', background=[('selected', ACCENT)], foreground=[('selected', '#ffffff')])
@@ -58,4 +82,5 @@ def apply_dark_theme(window):
                         arrowcolor=TEXT, bordercolor=BG)
         style.map(direction + '.TScrollbar', background=[('active', '#61758b')])
         style.configure(direction + '.TProgressbar', background='#5592c5', troughcolor=FIELD)
+    check_indicators(window, style)
     return style

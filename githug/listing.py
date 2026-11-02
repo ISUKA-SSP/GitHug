@@ -12,7 +12,10 @@ def date_value(value):
         return str(value), float('-inf')
 
 
-def visible_rows(rows, query, column, descending):
+def visible_rows(rows, query, column, descending, pinned_first=False):
     query = query.strip().casefold()
     matched = [row for row in rows if not query or query in row['search'].casefold()]
-    return sorted(matched, key=lambda row: row['sort'][column], reverse=descending)
+    ordered = sorted(matched, key=lambda row: row['sort'][column], reverse=descending)
+    if pinned_first:
+        ordered.sort(key=lambda row: not row.get('pinned', False))
+    return ordered

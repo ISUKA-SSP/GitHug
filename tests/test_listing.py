@@ -33,3 +33,12 @@ class ListingTests(unittest.TestCase):
         visible = visible_rows(rows, 'match', 'message', False)
         self.assertEqual(len(visible), 200)
         self.assertTrue(all(int(row['id'])%2 for row in visible))
+
+class PinnedRowsTests(unittest.TestCase):
+    def test_work_rows_remain_first_in_both_sort_directions_and_search(self):
+        work = {'id':'work','pinned':True,'search':'project','sort':{'value':2}}
+        older = {'id':'older','search':'project','sort':{'value':1}}
+        newer = {'id':'newer','search':'project','sort':{'value':3}}
+        for descending, expected in [(True,['work','newer','older']),(False,['work','older','newer'])]:
+            shown = visible_rows([older,newer,work], 'project', 'value', descending, pinned_first=True)
+            self.assertEqual([r['id'] for r in shown], expected)

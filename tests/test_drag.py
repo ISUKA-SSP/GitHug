@@ -49,3 +49,27 @@ class DragTests(unittest.TestCase):
         app.project = object()
         App.history_release(app, event)
         app.begin_update.assert_not_called()
+
+class PushDragTests(unittest.TestCase):
+    def make(self, row=''):
+        project = object()
+        history = Mock()
+        history.winfo_rootx.return_value = 0
+        history.winfo_rooty.return_value = 0
+        history.identify_region.return_value = 'cell' if row else 'nothing'
+        history.identify_row.return_value = row
+        window = Mock()
+        window.winfo_containing.return_value = history
+        app = SimpleNamespace(dragging={'direction':'push','folder':'folder','project':project,'active':True},
+                              project=project,busy=False,folders=Mock(),history=history,window=window,push_ui=Mock())
+        return app, SimpleNamespace(x_root=100,y_root=200)
+
+    def test_drop_on_history_row_passes_branch_hint(self):
+        app,event = self.make('sha')
+        App.folder_release(app,event)
+        app.push_ui.begin.assert_called_once_with('folder','sha')
+
+    def test_drop_on_blank_requests_new_branch(self):
+        app,event = self.make()
+        App.folder_release(app,event)
+        app.push_ui.begin.assert_called_once_with('folder',None)

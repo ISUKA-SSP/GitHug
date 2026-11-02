@@ -14,17 +14,17 @@ class ComparisonCancelled(Exception):
 class GitError(RuntimeError):
     pass
 
-def git(*args, cwd=None, env=None):
+def git(*args, cwd=None, env=None, input_text=None, allowed_returncodes=(0,)):
     try:
         result = subprocess.run(['git', *map(str, args)], cwd=cwd, capture_output=True,
-                                encoding='utf-8', errors='replace', timeout=180,
+                                encoding='utf-8', errors='replace', timeout=180, input=input_text,
                                 env={**os.environ, 'GIT_TERMINAL_PROMPT': '0', **(env or {})},
                                 creationflags=subprocess.CREATE_NO_WINDOW if os.name == 'nt' else 0)
     except FileNotFoundError as exc:
         raise GitError('Gitが見つかりません。Git for Windowsをインストールしてください。') from exc
     except subprocess.TimeoutExpired as exc:
         raise GitError('通信が時間内に終わりませんでした。接続を確認して再度お試しください。') from exc
-    if result.returncode:
+    if result.returncode not in allowed_returncodes:
         raise GitError(result.stderr.strip() or 'Gitの操作を完了できませんでした。')
     return result.stdout
 
