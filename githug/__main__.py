@@ -13,7 +13,10 @@ from .terminal import open_powershell
 from . import __version__
 from .listing import date_value, visible_rows
 from .theme import apply_dark_theme
-from .updating import inspect_update, apply_update
+from .updating import (inspect_update, apply_update, record_for_folder, authorize_update,
+                       disable_update, UpdateNotAllowed, UpdateConflict)
+from .notes import Notes, short_note
+from .editors import find_vscode, open_vscode
 from .push_ui import PushUI
 
 class App:
@@ -29,6 +32,7 @@ class App:
         except (FileNotFoundError, ValueError):
             self.config = {'root': '', 'projects': []}
         self.project = None
+        self.notes = None
         self.dragging = None
         self.push_ui = PushUI(self)
         self.busy = False
@@ -65,8 +69,8 @@ class App:
         self.sections.add(history_tab, weight=3)
         ttk.Label(history_tab, text='GitHubの履歴', style='Heading.TLabel').grid(row=0, column=0, sticky='w')
         ttk.Label(history_tab, text='履歴を下へドラッグ：空白へ新規再現／フォルダーの行へ更新の確認', style='Muted.TLabel').grid(row=1, column=0, sticky='w', pady=4)
-        self.history_query, self.history_count = self.search_bar(history_tab, '履歴を検索（説明・枝名・履歴番号・日時）', grid_row=2)
-        self.history = self.table(history_tab, ('date', 'refs', 'message'), ('更新日時', '作業の枝・目印', '変更の説明'), tree=True, grid_row=3)
+        self.history_query, self.history_count = self.search_bar(history_tab, '履歴を検索（説明・枝名・履歴番号・日時・自分用メモ）', grid_row=2)
+        self.history = self.table(history_tab, ('date', 'refs', 'message', 'memo'), ('更新日時', '作業の枝・目印', '変更の説明', '自分用メモ'), tree=True, grid_row=3)
         self.history.bind('<<TreeviewSelect>>', self.detail)
         self.history.bind('<Button-3>', self.menu)
         self.history.bind('<ButtonPress-1>', self.history_press, add='+')
@@ -84,9 +88,9 @@ class App:
         self.sections.add(folders, weight=2)
         ttk.Label(folders, text='PCのフォルダー', style='Heading.TLabel').grid(row=0, column=0, sticky='w')
         ttk.Label(folders, text='再現フォルダーは毎回新規作成。未再現の作業用は履歴・再現日時が空欄です。', style='Muted.TLabel').grid(row=1, column=0, sticky='w', pady=4)
-        self.folder_query, self.folder_count = self.search_bar(folders, 'フォルダーを検索（保存場所・再現日時・状態・履歴番号）', grid_row=2)
-        self.folders = self.table(folders, ('kind', 'path', 'sha', 'created', 'state'), ('種類', '保存場所', '元の履歴', '再現した日時', '状態'), grid_row=3)
-        self.folders.configure(displaycolumns=('sha', 'created', 'state', 'path'))
+        self.folder_query, self.folder_count = self.search_bar(folders, 'フォルダーを検索（保存場所・再現日時・状態・履歴番号・自分用メモ）', grid_row=2)
+        self.folders = self.table(folders, ('kind', 'path', 'sha', 'created', 'state', 'memo'), ('種類', '保存場所', '元の履歴', '再現した日時', '状態', '自分用メモ'), grid_row=3)
+        self.folders.configure(displaycolumns=('sha', 'created', 'state', 'path', 'memo'))
         self.folders.bind('<Button-3>', self.folder_menu)
         self.folders.bind('<ButtonPress-1>', self.folder_press, add='+')
         self.folders.bind('<B1-Motion>', self.folder_motion, add='+')
@@ -98,8 +102,8 @@ class App:
         ttk.Button(folder_controls, text='フォルダーを開く', command=self.open_folder).pack(side='left', padx=4)
         ttk.Button(folder_controls, text='PowerShell／コマンド', command=self.command_dialog).pack(side='left', padx=4)
         ttk.Button(folder_controls, text='一覧を更新', command=self.check_folder_tab).pack(side='left', padx=4)
-        self.configure_sort('history', self.history, ('#0', 'date', 'refs', 'message'))
-        self.configure_sort('folders', self.folders, ('sha', 'created', 'state', 'path'))
+        self.configure_sort('history', self.history, ('#0', 'date', 'refs', 'message', 'memo'))
+        self.configure_sort('folders', self.folders, ('sha', 'created', 'state', 'path', 'memo'))
         self.history_query.trace_add('write', lambda *_: self.render_history())
         self.folder_query.trace_add('write', lambda *_: self.render_folders())
         self.populate_projects()
@@ -224,6 +228,9 @@ class App:
         if not indices: return
         self.current = self.config['projects'][indices[0]]
         self.project = Project(self.config['root'], self.current['url'])
+        self.notes = None
+        try: self.notes = Notes(self.project.base)
+        except (OSError, ValueError) as exc: messagebox.showinfo('自分用メモを読み込めませんでした', str(exc))
         self.refresh()
 
     def run(self, description, task, callback):
@@ -261,16 +268,18 @@ class App:
             self.run('GitHubの履歴を確認しています…', self.project.refresh, self.show_history)
 
     def show_history(self, records):
+        if self.notes: self.notes.reload()
         self.records = {r['sha']: r for r in records}
         self.history_rows = []
         for r in records:
+            memo = self.notes.get('history', r['sha']) if self.notes else ''
             date, timestamp = date_value(r['date'])
             merge = '（合流）' if len(r['parents'].split()) > 1 else ''
             self.history_rows.append({
                 'id': r['sha'], 'text': r['sha'][:8] + merge,
-                'values': (date, r['refs'], r['message']),
-                'search': ' '.join((r['sha'], r['parents'], date, r['date'], r['refs'], r['message'])),
-                'sort': {'#0': r['sha'], 'date': timestamp, 'refs': r['refs'].casefold(), 'message': r['message'].casefold()}})
+                'values': (date, r['refs'], r['message'], short_note(memo)),
+                'search': ' '.join((r['sha'], r['parents'], date, r['date'], r['refs'], r['message'], memo)),
+                'sort': {'#0': r['sha'], 'date': timestamp, 'refs': r['refs'].casefold(), 'message': r['message'].casefold(), 'memo': memo.casefold()}})
         self.render_history()
         self.load_folders()
         self.status.set('履歴を取得しました（最大400件）。検索は取得済みの履歴が対象です。列見出しで並べ替えできます。')
@@ -288,8 +297,108 @@ class App:
         menu = tk.Menu(self.window, tearoff=False)
         menu.add_command(label='この時点を新しいフォルダーに再現', command=self.reproduce)
         menu.add_command(label='作業フォルダーと比較', command=self.compare)
+        menu.add_command(label='自分用メモを編集', command=self.edit_history_note)
         menu.add_command(label='選んだフォルダーをこの版に更新', command=self.update_selected)
         menu.tk_popup(event.x_root, event.y_root)
+
+    def edit_history_note(self):
+        items = self.history.selection()
+        if items and self.project:
+            self.note_dialog('history', items[0], '履歴 ' + items[0][:12])
+
+    def edit_folder_note(self):
+        items = self.folders.selection()
+        if items and self.project:
+            folder = self.folders.item(items[0], 'values')[1]
+            self.note_dialog('folders', folder, folder)
+
+    def note_dialog(self, scope, identity, title):
+        if self.busy: return
+        try: notes = Notes(self.project.base)
+        except (OSError, ValueError) as exc:
+            messagebox.showinfo('自分用メモを読み込めませんでした', str(exc))
+            return
+        popup = tk.Toplevel(self.window)
+        popup.title('自分用メモ — ' + title)
+        popup.geometry('800x480')
+        popup.minsize(560, 350)
+        popup.transient(self.window)
+        popup.columnconfigure(0, weight=1)
+        popup.rowconfigure(1, weight=1)
+        ttk.Label(popup, text=title + '\nこのPCだけのメモです。GitHubへの送信やAIの説明対象には含めません。',
+                  wraplength=530, padding=12).grid(row=0, column=0, sticky='ew')
+        frame = ttk.Frame(popup, padding=12)
+        frame.grid(row=1, column=0, sticky='nsew')
+        editor = tk.Text(frame, width=1, height=1, wrap='word', undo=True)
+        scroll = ttk.Scrollbar(frame, orient='vertical', command=editor.yview)
+        editor.configure(yscrollcommand=scroll.set)
+        scroll.pack(side='right', fill='y')
+        editor.pack(fill='both', expand=True)
+        editor.insert('1.0', notes.get(scope, identity))
+        buttons = ttk.Frame(popup, padding=12)
+        buttons.grid(row=2, column=0, sticky='ew')
+        def save():
+            try:
+                notes.set(scope, identity, editor.get('1.0', 'end-1c'))
+                self.notes = notes
+                self.show_history(list(self.records.values()))
+            except (OSError, ValueError) as exc:
+                messagebox.showinfo('メモを保存できませんでした', str(exc), parent=popup)
+                return
+            popup.destroy()
+        ttk.Button(buttons, text='保存', command=save).pack(side='right', padx=4)
+        ttk.Button(buttons, text='キャンセル', command=popup.destroy).pack(side='right', padx=4)
+        ttk.Label(buttons, text='空欄にして保存するとメモを削除します。', style='Muted.TLabel').pack(side='left')
+        popup.grab_set()
+        editor.focus_set()
+
+    def vscode_selected(self):
+        self.with_selected_folder(self.vscode_folder)
+
+    def vscode_folder(self, folder):
+        executable = self.config.get('vscode_executable')
+        if not executable or not Path(executable).is_file():
+            executable = find_vscode()
+        if not executable:
+            if not messagebox.askyesno('VS Codeが見つかりません', 'VS Codeの実行ファイル（Code.exe）を選びますか？\nインストールしていない場合もGitHugは引き続き使えます。'):
+                return
+            executable = filedialog.askopenfilename(title='VS Codeの実行ファイルを選択',
+                         filetypes=[('VS Code', 'Code.exe'), ('実行ファイル', '*.exe')])
+            if not executable: return
+        try:
+            open_vscode(folder, executable)
+            self.config['vscode_executable'] = executable
+            self.save()
+        except (OSError, ValueError) as exc:
+            messagebox.showinfo('VS Codeを開けませんでした', str(exc))
+
+    def work_update_permission(self):
+        if self.busy: return
+        items = self.folders.selection()
+        if not items: return
+        folder = self.folders.item(items[0], 'values')[1]
+        _, record = record_for_folder(self.project, folder)
+        if record and record.get('kind') == 'work' and record.get('update_allowed'):
+            if messagebox.askyesno('同じ場所への更新を無効にする', folder + '\nこのフォルダーの入れ替えを無効にしますか？比較・送信は引き続き使えます。'):
+                disable_update(self.project, folder)
+                self.load_folders()
+            return
+        sha = next(iter(self.records), None)
+        if not sha:
+            messagebox.showinfo('履歴を取得', '先に「更新を確認」で履歴を取得してください。')
+            return
+        project = self.project
+        def done(plan):
+            if not messagebox.askyesno('作業フォルダーの更新を有効にする',
+                    '対象: ' + str(plan.folder) + '\n作成元: ' + plan.baseline[:12] +
+                    '\n今後、確認画面からこの場所のファイルを入れ替えられるようにしますか？\n有効にするだけではファイルを変更しません。'):
+                return
+            def saved(_):
+                self.load_folders()
+                self.status.set('この作業フォルダーの更新を有効にしました: ' + str(plan.folder))
+            self.run('内容を再確認して更新の許可を保存しています…', lambda: authorize_update(project, plan), saved)
+        self.run('作業フォルダーの作成元を確認しています…',
+                 lambda: inspect_update(project, folder, sha, lambda note: setattr(self, 'operation_note', note), for_authorization=True), done)
 
     def send_selected_folder(self):
         if self.busy or not self.project: return
@@ -417,9 +526,16 @@ class App:
             return
         project = self.project
         def progress(note): self.operation_note = note
-        self.run('手元の変更を確認しています…',
-                 lambda: inspect_update(project, folder, sha, progress),
-                 lambda plan: self.update_dialog(project, plan))
+        def inspect():
+            try: return inspect_update(project, folder, sha, progress)
+            except UpdateNotAllowed as exc: return str(exc)
+        def done(plan):
+            if isinstance(plan, str):
+                if messagebox.askyesno('この場所は入れ替えません', plan + '\n\n選んだ版を別の新しいフォルダーへ再現しますか？'):
+                    self.reproduce_sha(sha)
+                return
+            self.update_dialog(project, plan)
+        self.run('手元の変更を確認しています…', inspect, done)
 
     def update_dialog(self, project, plan):
         popup = tk.Toplevel(self.window)
@@ -567,16 +683,21 @@ class App:
             self.load_folders()
 
     def load_folders(self):
+        if self.notes: self.notes.reload()
         self.folder_records = {}
         self.folder_rows = []
         def add(item, kind, folder, sha='', created=''):
+            memo = self.notes.get('folders', folder) if self.notes else ''
             state = self.folder_state(folder)
+            if kind == '作業用（登録）' and state == '利用できます':
+                _, version = record_for_folder(self.project, folder)
+                state += '（更新有効）' if version and version.get('update_allowed') else '（更新無効）'
             date, timestamp = date_value(created)
             self.folder_rows.append({
-                'id': item, 'pinned': kind == '作業用（登録）', 'values': (kind, folder, sha[:8], date, state),
-                'search': ' '.join((kind, folder, sha, date, created, state)),
+                'id': item, 'pinned': kind == '作業用（登録）', 'values': (kind, folder, sha[:8], date, state, short_note(memo)),
+                'search': ' '.join((kind, folder, sha, date, created, state, memo)),
                 'sort': {'kind': kind.casefold(), 'path': folder.casefold(), 'sha': sha,
-                         'created': timestamp, 'state': state}})
+                         'created': timestamp, 'state': state, 'memo': memo.casefold()}})
         versions = {str(Path(r['folder']).resolve()): r for r in self.project.folder_versions()}
         for index, folder in enumerate(self.current.get('work', [])):
             record = versions.get(str(Path(folder).resolve()), {})
@@ -596,7 +717,11 @@ class App:
         item = items[0]
         folder = self.folders.item(item, 'values')[1]
         state = self.folder_state(folder)
-        self.folders.set(item, 'state', state)
+        display_state = state
+        if state == '利用できます' and self.folders.item(item, 'values')[0] == '作業用（登録）':
+            _, version = record_for_folder(self.project, folder)
+            display_state += '（更新有効）' if version and version.get('update_allowed') else '（更新無効）'
+        self.folders.set(item, 'state', display_state)
         if state == '利用できます':
             action(folder)
             return
@@ -652,6 +777,13 @@ class App:
         self.folders.selection_set(item)
         menu = tk.Menu(self.window, tearoff=False)
         menu.add_command(label='フォルダーを開く', command=self.open_folder)
+        menu.add_command(label='VS Codeで開く', command=self.vscode_selected)
+        menu.add_command(label='自分用メモを編集', command=self.edit_folder_note)
+        if item.startswith('work:'):
+            folder = self.folders.item(item, 'values')[1]
+            _, record = record_for_folder(self.project, folder)
+            enabled = record and record.get('kind') == 'work' and record.get('update_allowed')
+            menu.add_command(label='同じ場所への更新を無効にする' if enabled else 'この作業フォルダーの更新を有効にする', command=self.work_update_permission)
         menu.add_command(label='PowerShellで開く／コマンドを実行', command=self.command_dialog)
         menu.add_command(label='変更を確認してGitHubへ送る', command=self.send_selected_folder)
         try:

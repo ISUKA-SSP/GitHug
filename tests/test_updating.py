@@ -6,7 +6,7 @@ import unittest
 from unittest.mock import patch
 import zipfile
 from githug.core import Project, git
-from githug.updating import inspect_update, apply_update, UpdateConflict, atomic_json
+from githug.updating import inspect_update, apply_update, UpdateConflict, UpdateNotAllowed, atomic_json, authorize_update, disable_update, inventory
 
 class UpdateTests(unittest.TestCase):
     def setUp(self):
@@ -97,22 +97,51 @@ class UpdateTests(unittest.TestCase):
         self.assertEqual((self.target / 'hello.txt').read_text(), 'old')
         self.assertEqual(self.project.snapshots()[0]['sha'], self.old)
 
-    def test_unknown_work_folder_preserved_and_version_recorded(self):
+    def test_unknown_work_folder_cannot_be_replaced_even_for_authorization(self):
         folder = self.root / 'work'
         folder.mkdir()
         (folder / 'personal.txt').write_text('mine')
-        plan = inspect_update(self.project, folder, self.new)
-        self.assertTrue(plan.unknown)
-        with self.assertRaises(UpdateConflict): apply_update(self.project, plan)
+        for options in ({}, {'for_authorization': True}):
+            with self.assertRaises(UpdateNotAllowed): inspect_update(self.project, folder, self.new, **options)
         self.assertEqual((folder / 'personal.txt').read_text(), 'mine')
-        result = apply_update(self.project, plan, preserve_local_only=False)
-        with zipfile.ZipFile(result['backup']) as archive:
-            self.assertEqual(archive.read('personal.txt'), b'mine')
-        self.assertEqual(len(self.project.snapshots()), 1)  # Work folder does not become duplicate snapshot row.
+        self.assertFalse((self.project.base / 'updates').exists())
+
+    def test_known_work_folder_requires_explicit_authorization(self):
+        folder = self.root / 'work'
+        shutil.copytree(self.target, folder)
+        before = inventory(folder)
+        with self.assertRaises(UpdateNotAllowed): inspect_update(self.project, folder, self.new)
+        plan = inspect_update(self.project, folder, self.new, for_authorization=True)
+        with self.assertRaises(UpdateNotAllowed): apply_update(self.project, plan)
+        authorize_update(self.project, plan)
+        self.assertEqual(inventory(folder), before)
+        allowed = inspect_update(self.project, folder, self.new)
+        apply_update(self.project, allowed)
+        self.assertEqual((folder / 'hello.txt').read_text(), 'new')
+        self.assertEqual(len(self.project.snapshots()), 1)
         self.assertEqual(len(self.project.folder_versions()), 2)
-        again = inspect_update(self.project, folder, self.old)
-        self.assertEqual(again.baseline, self.new)
-        self.assertFalse(again.unknown)
+
+    def test_revoked_permission_is_rechecked_before_replacement(self):
+        folder = self.root / 'work'
+        shutil.copytree(self.target, folder)
+        authorization = inspect_update(self.project, folder, self.new, for_authorization=True)
+        authorize_update(self.project, authorization)
+        plan = inspect_update(self.project, folder, self.new)
+        disable_update(self.project, folder)
+        with self.assertRaises(UpdateNotAllowed): apply_update(self.project, plan)
+        self.assertEqual((folder / 'hello.txt').read_text(), 'old')
+
+    def test_personal_folder_note_survives_same_path_update(self):
+        from githug.notes import Notes
+        notes = Notes(self.project.base)
+        notes.set('folders', str(self.target), '普段使いの作業場所')
+        notes.set('history', self.old, '元の版を確認済み')
+        plan = inspect_update(self.project, self.target, self.new)
+        apply_update(self.project, plan)
+        reloaded = Notes(self.project.base)
+        self.assertEqual(reloaded.get('folders', str(self.target)), '普段使いの作業場所')
+        self.assertEqual(reloaded.get('history', self.old), '元の版を確認済み')
+        self.assertFalse((self.target / 'personal_notes.json').exists())
 
     def test_protected_directories_and_links_refused(self):
         for folder in (self.project.base, self.project.cache, self.project.base.parent):

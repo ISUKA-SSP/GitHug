@@ -27,7 +27,7 @@ class Change:
 
     @property
     def initially_selected(self):
-        return self.kind == 'M' and not sensitive_path(self.path)
+        return self.kind in ('M', 'A') and not sensitive_path(self.path)
 
 
 @dataclass
@@ -38,6 +38,20 @@ class PushPlan:
     branches: dict
     author_name: str
     author_email: str
+
+
+def choose_files(changes, mode):
+    if mode == 'all': return {change.path for change in changes}
+    if mode == 'none': return set()
+    if mode == 'default': return {change.path for change in changes if change.initially_selected}
+    raise ValueError('選択方法が正しくありません。')
+
+
+def selection_counts(changes, selected):
+    result = {'M': 0, 'A': 0, 'D': 0}
+    for change in changes:
+        if change.path in selected: result[change.kind] += 1
+    return result
 
 
 def safe_path(folder, relative):
@@ -108,6 +122,10 @@ def local_base(project, folder):
 def inspect_push(project, folder, fallback_base=None, progress=None):
     source = Path(folder).resolve(strict=True)
     if not source.is_dir(): raise ValueError('送信元のフォルダーが見つかりません。')
+    base_folder = project.base.resolve()
+    reserved = [base_folder / name for name in ('history.git', 'records', 'backups', 'updates', 'outbox')]
+    if source == base_folder or source in base_folder.parents or any(source == path or path in source.parents for path in reserved):
+        raise ValueError('GitHugの管理用データを含む場所は送信元にできません。コードのフォルダーを選んでください。')
     base = local_base(project, source) or fallback_base
     if not base or not re.fullmatch(r'[0-9a-f]{40,64}', base):
         raise ValueError('元の履歴が分かりません。上で比較基準の履歴を選んでから送信してください。')

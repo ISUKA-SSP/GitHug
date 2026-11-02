@@ -18,6 +18,10 @@ class UpdateConflict(RuntimeError):
     pass
 
 
+class UpdateNotAllowed(UpdateConflict):
+    pass
+
+
 def atomic_json(path, data):
     path = Path(path)
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -108,6 +112,32 @@ class UpdatePlan:
     collisions: tuple
 
 
+def require_update_permission(project, folder, baseline):
+    _, record = record_for_folder(project, folder)
+    if not record or record.get('sha') != baseline:
+        raise UpdateNotAllowed('この作業用フォルダーは同じ場所への更新が無効です。作成元を確認し、右クリックから更新を有効にするか、別フォルダーへ再現してください。')
+    if record.get('kind', 'snapshot') != 'snapshot' and not record.get('update_allowed', False):
+        raise UpdateNotAllowed('この作業用フォルダーは同じ場所への更新が無効です。右クリックから明示的に有効にするか、別フォルダーへ再現してください。')
+
+
+def authorize_update(project, plan):
+    target = checked_folder(project, plan.folder)
+    if not plan.baseline or plan.unknown:
+        raise UpdateNotAllowed('作成元の版が分からないフォルダーは有効にできません。')
+    if inventory(target) != plan.fingerprint:
+        raise UpdateConflict('確認後に内容が変わりました。もう一度確認してください。')
+    path, record = record_for_folder(project, target)
+    if record and record.get('kind', 'snapshot') == 'snapshot': return
+    path = path or project.base / 'records' / ('work-' + uuid4().hex + '.json')
+    atomic_json(path, {**(record or {}), 'folder': str(target), 'sha': plan.baseline, 'kind': 'work', 'update_allowed': True})
+
+
+def disable_update(project, folder):
+    path, record = record_for_folder(project, folder)
+    if path and record.get('kind') == 'work':
+        atomic_json(path, {**record, 'update_allowed': False})
+
+
 def tree_paths(project, sha):
     raw = git('ls-tree', '-r', '-z', '--name-only', sha, cwd=project.cache)
     return set(filter(None, raw.split('\0')))
@@ -166,7 +196,7 @@ def copy_local_additions(source, destination, plan, progress=None):
         shutil.copy2(source / name, target)
 
 
-def inspect_update(project, folder, sha, progress=None):
+def inspect_update(project, folder, sha, progress=None, *, for_authorization=False):
     if not re.fullmatch(r'[0-9a-f]{40,64}', sha):
         raise ValueError('履歴の識別番号が正しくありません。')
     git('cat-file', '-e', sha + '^{commit}', cwd=project.cache)
@@ -176,7 +206,6 @@ def inspect_update(project, folder, sha, progress=None):
         if entry.get('state') not in ('completed', 'rolled_back'):
             raise UpdateConflict('未完了の更新記録があります。追加の入れ替えは行いません。\n' + str(journal) +
                                  '\n記録の original / previous / staged の場所を確認してください。')
-    fingerprint = inventory(target, progress)
     record_path, record = record_for_folder(project, target)
     baseline = record.get('sha') if record else None
     unknown = False
@@ -190,6 +219,11 @@ def inspect_update(project, folder, sha, progress=None):
                 baseline = candidate
         except GitError:
             pass
+    if not baseline:
+        raise UpdateNotAllowed('このフォルダーの作成元の版が分からないため、同じ場所への更新は行いません。新しいフォルダーへ再現してください。')
+    if not for_authorization:
+        require_update_permission(project, target, baseline)
+    fingerprint = inventory(target, progress)
     if baseline:
         if (target / '.git').is_dir():
             # Git normalizes CRLF according to the repository's attributes on Windows.
@@ -254,6 +288,7 @@ def archive_folder(folder, destination, progress=None):
 def apply_update(project, plan, keep_backup=True, progress=None, preserve_local_only=True):
     """Prepare first, then rename on the same filesystem. Never copy over a live target."""
     target = checked_folder(project, plan.folder)
+    require_update_permission(project, target, plan.baseline)
     if target != plan.folder or inventory(target, progress) != plan.fingerprint:
         raise UpdateConflict('確認後にフォルダーの内容が変わりました。変更は行いませんでした。もう一度確認してください。')
     if preserve_local_only and plan.unknown:
@@ -282,6 +317,7 @@ def apply_update(project, plan, keep_backup=True, progress=None, preserve_local_
             copy_local_additions(target, staged, plan, progress)
         if inventory(target, progress) != plan.fingerprint:
             raise UpdateConflict('準備中にファイルが変更されました。変更は行いませんでした。もう一度確認してください。')
+        require_update_permission(project, target, plan.baseline)
         atomic_json(journal_path, journal)
         target.rename(previous)
         moved = True

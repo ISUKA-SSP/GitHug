@@ -3,7 +3,7 @@ import tempfile
 import unittest
 from unittest.mock import patch
 from githug.core import Project, git, GitError
-from githug.publishing import Change, inspect_push, preview_changes, publish, remote_head, RemoteChanged
+from githug.publishing import Change, choose_files, selection_counts, inspect_push, preview_changes, publish, remote_head, RemoteChanged
 from githug.updating import inventory, UpdateConflict
 
 class PublishTests(unittest.TestCase):
@@ -45,11 +45,31 @@ class PublishTests(unittest.TestCase):
             self.assertFalse(Change(name, 'M', 'hash').initially_selected)
         self.assertTrue(Change('core.py', 'M', 'hash').initially_selected)
 
+    def test_bulk_selection_and_counts(self):
+        changes = [Change('code.py','M','x'),Change('added.py','A','y'),Change('old.txt','D',None),Change('private.db','A','z')]
+        default = choose_files(changes, 'default')
+        self.assertEqual(default, {'code.py','added.py'})
+        self.assertEqual(selection_counts(changes, default), {'M':1,'A':1,'D':0})
+        all_paths = choose_files(changes, 'all')
+        self.assertEqual(selection_counts(changes, all_paths), {'M':1,'A':2,'D':1})
+        self.assertEqual(choose_files(changes,'none'), set())
+
+    def test_personal_notes_are_outside_source_and_never_in_preview(self):
+        from githug.notes import Notes
+        notes = Notes(self.project.base)
+        notes.set('history', self.base, 'private history comment')
+        notes.set('folders', str(self.folder), 'private folder comment')
+        plan = self.plan()
+        self.assertNotIn('personal_notes.json', [change.path for change in plan.changes])
+        preview = preview_changes(self.project, plan, ['code.py'])
+        self.assertNotIn('private history comment', preview['patch'])
+        with self.assertRaises(ValueError): inspect_push(self.project, self.project.base, self.base)
+
     def test_review_defaults_and_preview_do_not_change_source(self):
         before = inventory(self.folder)
         plan = self.plan()
         self.assertEqual({c.path:c.kind for c in plan.changes}, {'code.py':'M','delete.txt':'D','add.txt':'A'})
-        self.assertEqual([c.path for c in plan.changes if c.initially_selected], ['code.py'])
+        self.assertEqual([c.path for c in plan.changes if c.initially_selected], ['code.py', 'add.txt'])
         preview = preview_changes(self.project, plan, ['code.py'])
         self.assertIn('+new = True', preview['patch'])
         self.assertNotIn('optional', preview['patch'])

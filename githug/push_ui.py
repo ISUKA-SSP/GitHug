@@ -3,7 +3,7 @@ from datetime import datetime
 from pathlib import Path
 import tkinter as tk
 from tkinter import ttk, messagebox
-from .publishing import inspect_push, local_base, preview_changes, publish
+from .publishing import inspect_push, local_base, preview_changes, publish, choose_files, selection_counts
 from .explaining import explainable, explanation_input, explain, cache_key
 
 
@@ -28,7 +28,7 @@ class PushUI:
             if not fallback:
                 messagebox.showinfo('元の履歴を選択', '送信元の基準が分かりません。上で比較元の履歴を選び、もう一度送信してください。')
                 return
-            if not messagebox.askyesno('比較する基準を確認', '元の履歴が不明です。選択した履歴 ' + fallback[:8] +
+            if not messagebox.askyesno('比較する基準を確認', 'このフォルダーの作成元の版が分かりません。選択した履歴 ' + fallback[:8] +
                                        ' を基準に、変更・追加・削除を調べますか？\n送信前に対象ファイルを選べます。'):
                 return
         def task():
@@ -71,7 +71,7 @@ class PushUI:
         table.column('send', width=80, stretch=False)
         table.column('kind', width=100, stretch=False)
         table.column('path', width=700)
-        selected = {change.path for change in plan.changes if change.initially_selected}
+        selected = choose_files(plan.changes, 'default')
         by_item = {}
         for index, change in enumerate(plan.changes):
             item = str(index)
@@ -79,19 +79,39 @@ class PushUI:
             table.insert('', 'end', iid=item, values=('✓ 送る' if change.path in selected else '—',
                          {'M':'変更', 'A':'追加', 'D':'削除'}[change.kind], change.path))
         def toggle(event=None):
+            if app.busy: return
             item = table.identify_row(event.y) if event is not None and hasattr(event, 'y') else (table.selection()[0] if table.selection() else '')
             if not item or item not in by_item: return
             path = by_item[item].path
             if path in selected: selected.remove(path)
             else: selected.add(path)
             table.set(item, 'send', '✓ 送る' if path in selected else '—')
+            refresh_counts()
         table.bind('<Double-1>', toggle)
         table.bind('<space>', lambda event: toggle())
         selection_controls = ttk.Frame(popup, padding=(12, 4))
         selection_controls.grid(row=3, column=0, sticky='ew')
-        ttk.Button(selection_controls, text='選んだ行を送る／外す', command=toggle).pack(side='left')
-        ttk.Label(selection_controls, text='追加・削除は未選択。設定やDBも自動追加しません。ダブルクリックでも切り替えできます。',
-                  wraplength=650, style='Muted.TLabel').pack(side='left', padx=8)
+        count_text = tk.StringVar()
+        count_label = ttk.Label(selection_controls, textvariable=count_text)
+        def refresh_counts():
+            counts = selection_counts(plan.changes, selected)
+            count_text.set(f"送信対象：変更 {counts['M']} 件 ／ 追加 {counts['A']} 件 ／ 削除 {counts['D']} 件（候補 {len(plan.changes)} 件）")
+            count_label.configure(foreground='#ffb36b' if counts['D'] else '#d7dce4')
+        def bulk(mode):
+            if app.busy: return
+            selected.clear()
+            selected.update(choose_files(plan.changes, mode))
+            for item, change in by_item.items():
+                table.set(item, 'send', '✓ 送る' if change.path in selected else '—')
+            refresh_counts()
+        for column, (title, command) in enumerate([
+            ('全て選択', lambda: bulk('all')), ('全て外す', lambda: bulk('none')),
+            ('変更・追加だけ選択', lambda: bulk('default')), ('選んだ行を送る／外す', toggle)]):
+            ttk.Button(selection_controls, text=title, command=command).grid(row=0, column=column, padx=4, pady=4, sticky='w')
+        count_label.grid(row=1, column=0, columnspan=4, sticky='w', pady=4)
+        ttk.Label(selection_controls, text='通常の変更・追加は選択済み。削除・設定・DB・鍵などは未選択です。「全て選択」はこれらも含みます。',
+                  wraplength=800, style='Muted.TLabel').grid(row=2, column=0, columnspan=4, sticky='w')
+        refresh_counts()
         details = ttk.Frame(popup, padding=(12, 4))
         details.grid(row=4, column=0, sticky='ew')
         details.columnconfigure(1, weight=1)
@@ -100,7 +120,7 @@ class PushUI:
         description.grid(row=0, column=1, columnspan=3, sticky='ew', pady=4)
         name = tk.StringVar(value=app.config.get('author_name') or plan.author_name)
         email = tk.StringVar(value=app.config.get('author_email') or plan.author_email)
-        ttk.Label(details, text='記録する名前').grid(row=1, column=0, sticky='w')
+        ttk.Label(details, text='記録者の名前').grid(row=1, column=0, sticky='w')
         ttk.Entry(details, textvariable=name).grid(row=1, column=1, sticky='ew', padx=4)
         ttk.Label(details, text='メール').grid(row=1, column=2)
         ttk.Entry(details, textvariable=email, width=30).grid(row=1, column=3, sticky='ew', padx=4)
@@ -126,14 +146,17 @@ class PushUI:
             if app.busy: return
             paths = list(selected)
             if not paths or not description.get('1.0','end-1c').strip() or not branch.get().strip() or not name.get().strip() or not email.get().strip():
-                messagebox.showinfo('入力を確認', 'ファイル・枝の名前・変更の説明・記録する名前とメールを確認してください。', parent=popup)
+                messagebox.showinfo('入力を確認', 'ファイル・枝の名前・変更の説明・記録者の名前とメールを確認してください。', parent=popup)
                 return
             new = mode.get() == '新しい枝として送る'
             destination = branch.get().strip()
             if not new and plan.branches.get(destination) != plan.base:
                 messagebox.showinfo('新しい枝をおすすめします', 'この枝には元の版と異なる更新があります。「新しい枝として送る」を選んでください。', parent=popup)
                 return
-            if not messagebox.askyesno('GitHubへ送信', f'{project.name}\n枝: {destination}\n対象: {len(paths)} 件\n選んだ内容を記録してGitHubへ送りますか？', parent=popup):
+            counts = selection_counts(plan.changes, selected)
+            deletion_note = '\n削除対象はGitHubの新しい履歴から取り除きます（PC側には影響しません）。' if counts['D'] else ''
+            if not messagebox.askyesno('GitHubへ送信', f"{project.name}\n枝: {destination}\n変更 {counts['M']} 件 ／ 追加 {counts['A']} 件 ／ 削除 {counts['D']} 件" +
+                                      deletion_note + '\n選んだ内容を記録してGitHubへ送りますか？', parent=popup):
                 return
             message = description.get('1.0','end-1c')
             name_value, email_value = name.get(), email.get()
