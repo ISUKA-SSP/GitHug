@@ -9,7 +9,7 @@ from .inspection import file_input,history_input
 
 class ExplanationPanel:
     def __init__(self,parent,app):
-        self.app=app;self.frame=ttk.Frame(parent,padding=12,style='Card.TFrame');self.target=None;self.pending=queue.Queue();self.busy=False
+        self.app=app;self.frame=ttk.Frame(parent,padding=12,width=350,style='Card.TFrame');self.frame.pack_propagate(False);self.target=None;self.pending=queue.Queue();self.busy=False
         self.payload=None;self.prepared_target=None
         top=ttk.Frame(self.frame);top.pack(fill='x')
         ttk.Label(top,text='選んだものを説明',style='Heading.TLabel').pack(side='left')

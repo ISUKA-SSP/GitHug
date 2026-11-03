@@ -85,8 +85,10 @@ def launch(app_class, argv=None):
                                    env={**os.environ,'GITHUG_CAPTURE_PATH':str(capture),
                                         'GITHUG_CAPTURE_X':str(root.winfo_rootx()),'GITHUG_CAPTURE_Y':str(root.winfo_rooty()),
                                         'GITHUG_CAPTURE_W':str(root.winfo_width()),'GITHUG_CAPTURE_H':str(root.winfo_height())})
+                report['sidebar_width']=app.projects.master.winfo_width()
+                report['panel_width']=app.explanation.frame.winfo_width()
                 report['callback_errors']=callback_errors
-                if callback_errors or not report['folder_tree_loaded'] or not report['explanation_prepared']:
+                if callback_errors or report['sidebar_width']<180 or report['panel_width']<250 or not report['folder_tree_loaded'] or not report['explanation_prepared']:
                     raise RuntimeError('追加パネルの確認に失敗しました: '+str(report))
             report['history_size']=app.history.winfo_geometry()
             Path(args.smoke_test).write_text(json.dumps(report,ensure_ascii=False,indent=2),encoding='utf-8')
