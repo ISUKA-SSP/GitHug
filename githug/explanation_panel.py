@@ -5,6 +5,8 @@ import tkinter as tk
 from tkinter import ttk
 from .explaining import explain, normalize_api_key
 from .inspection import file_input,history_input
+from .view_switch import ViewSwitch
+from .reading import write_explanation
 
 
 class ExplanationPanel:
@@ -12,8 +14,11 @@ class ExplanationPanel:
         self.app=app;self.frame=ttk.Frame(parent,padding=12,width=350,style='Card.TFrame');self.frame.pack_propagate(False);self.target=None;self.pending=queue.Queue();self.busy=False
         self.payload=None;self.prepared_target=None
         top=ttk.Frame(self.frame);top.pack(fill='x')
-        ttk.Label(top,text='選んだものを説明',style='Heading.TLabel').pack(side='left')
-        ttk.Button(top,text='閉じる',command=app.toggle_explanation).pack(side='right')
+        top.columnconfigure(0,weight=1)
+        ttk.Label(top,text='説明',style='Heading.TLabel').grid(row=0,column=0,sticky='w')
+        close_button=ttk.Button(top,text='✖',width=3,command=app.toggle_explanation,style='Icon.TButton')
+        close_button.grid(row=0,column=2,sticky='e')
+        self.tooltip(close_button,'説明パネルを閉じる')
         self.caption=tk.StringVar(value='履歴か左下のファイルを選択')
         ttk.Label(self.frame,textvariable=self.caption,wraplength=300).pack(fill='x',pady=8)
         self.mode=tk.StringVar(value='一つの履歴')
@@ -24,17 +29,35 @@ class ExplanationPanel:
         ttk.Checkbutton(self.frame,text='内容・差分の本文も含める',variable=self.detail).pack(anchor='w',pady=4)
         self.model=tk.StringVar(value=app.config.get('explanation_model',''))
         self.key=tk.StringVar()
-        ttk.Button(top,text='接続設定',command=self.settings_dialog).pack(side='right',padx=4)
+        settings_button=ttk.Button(top,text='⚙',width=3,command=self.settings_dialog,style='Icon.TButton')
+        settings_button.grid(row=0,column=1,sticky='e',padx=(4,4))
+        self.tooltip(settings_button,'Geminiの接続設定')
+        self.header_buttons=(settings_button,close_button)
         self.prepare=ttk.Button(self.frame,text='送信内容を確認',command=self.prepare_input);self.prepare.pack(fill='x',pady=(8,4))
         self.send=ttk.Button(self.frame,text='Geminiへ送って説明する',command=self.request,style='Primary.TButton',state='disabled');self.send.pack(fill='x')
         self.state=tk.StringVar(value='選択だけでは送信しません。説明はAIの推測を含みます。')
         ttk.Label(self.frame,textvariable=self.state,wraplength=300,style='Muted.TLabel').pack(fill='x',pady=8)
-        tabs=ttk.Notebook(self.frame);tabs.pack(fill='both',expand=True)
+        tabs=ViewSwitch(self.frame);tabs.pack(fill='both',expand=True)
         self.output=self.text_area(tabs,'説明');self.preview=self.text_area(tabs,'送信内容')
         self.tabs=tabs
         ttk.Button(self.frame,text='説明をコピー',command=self.copy).pack(anchor='e',pady=(4,0))
         for variable in (self.mode,self.base,self.detail):variable.trace_add('write',self.invalidate)
         self.frame.after(80,self.poll)
+
+    @staticmethod
+    def tooltip(widget,label):
+        state={'tip':None,'after':None}
+        def hide(event=None):
+            if state['after'] is not None:widget.after_cancel(state['after']);state['after']=None
+            if state['tip'] is not None:state['tip'].destroy();state['tip']=None
+        def show():
+            state['after']=None
+            if not widget.winfo_exists():return
+            tip=tk.Toplevel(widget);tip.overrideredirect(True)
+            tip.geometry('+'+str(widget.winfo_rootx())+'+'+str(widget.winfo_rooty()+widget.winfo_height()+4))
+            ttk.Label(tip,text=label,padding=6).pack();state['tip']=tip
+        widget.bind('<Enter>',lambda event:state.update(after=widget.after(500,show)))
+        widget.bind('<Leave>',hide);widget.bind('<ButtonPress>',hide,add='+')
 
     def settings_dialog(self):
         existing=getattr(self,'settings_window',None)
@@ -65,7 +88,7 @@ class ExplanationPanel:
         return popup
 
     def text_area(self,tabs,title):
-        frame=ttk.Frame(tabs);tabs.add(frame,text=title)
+        frame=ttk.Frame(tabs.body);tabs.add(frame,text=title)
         bar=ttk.Scrollbar(frame);bar.pack(side='right',fill='y')
         text=tk.Text(frame,width=28,height=6,wrap='word',state='disabled',yscrollcommand=bar.set,font=('Yu Gothic UI',11),padx=8,pady=8,spacing3=3)
         bar.configure(command=text.yview);text.pack(fill='both',expand=True)
@@ -77,10 +100,10 @@ class ExplanationPanel:
 
     def choose(self,target):
         self.target=target
-        self.caption.set(target['label'] if target else '履歴か左下のファイルを選択')
+        self.caption.set((target['label'][:100]+('…' if len(target['label'])>100 else '')) if target else '履歴か左下のファイルを選択')
+        self.payload=None;self.send.configure(state='disabled')
         if not self.busy:
-            self.payload=None;self.send.configure(state='disabled')
-            self.write(self.preview,'');self.state.set('送信内容を確認してから依頼します。前の説明の対象は説明欄の先頭に表示します。')
+            self.write(self.preview,'');self.state.set('送信前に内容を確認してください。')
 
     def invalidate(self,*args):
         self.payload=None;self.send.configure(state='disabled')
@@ -114,7 +137,7 @@ class ExplanationPanel:
         payload=self.payload;key=self.key.get();model=self.model.get().strip()
         self.answer_label=self.prepared_target['label']
         self.app.config['explanation_model']=model;self.app.save()
-        self.state.set('Geminiに説明を依頼中… 対象: '+self.answer_label)
+        self.state.set('Geminiに説明を依頼中…')
         self.launch('answer',lambda:explain(key,model,payload))
 
     def poll(self):
@@ -135,7 +158,7 @@ class ExplanationPanel:
                 self.state.set(str(len(value))+'文字をGoogle Geminiへ送信します。内容を確認してください。')
                 self.send.configure(state='normal')
             else:
-                self.write(self.output,'対象: '+self.answer_label+'\n\n'+value);self.tabs.select(0)
+                write_explanation(self.output,'対象: '+self.answer_label+'\n\n'+value);self.tabs.select(0)
                 self.payload=None;self.state.set('説明を受信しました。再依頼には送信内容を確認してください。')
         self.frame.after(80,self.poll)
 

@@ -64,6 +64,10 @@ def launch(app_class, argv=None):
                 report['settings_dialog_opened']=settings.winfo_exists()
                 settings.destroy()
                 app.inspect_file(str(directory/'copy'/'file.txt'))
+                from .reading import write_explanation
+                write_explanation(app.explanation.output,'### 確認用の見出し\n* **重要**な説明と `file.txt`')
+                app.explanation.tabs.select(0)
+                app.explanation.tabs.select(1)
                 app.explanation.prepare_input()
                 app.history.graph_view.manual_width=180
                 app.history.graph_view.set_page(app.history_model,[r['sha'] for r in records],True)
@@ -91,8 +95,12 @@ def launch(app_class, argv=None):
                                         'GITHUG_CAPTURE_W':str(root.winfo_width()),'GITHUG_CAPTURE_H':str(root.winfo_height())})
                 report['sidebar_width']=app.projects.master.winfo_width()
                 report['panel_width']=app.explanation.frame.winfo_width()
+                buttons=app.explanation.header_buttons
+                report['header_buttons_visible']=all(b.winfo_width()>15 and b.winfo_x()>=0 and b.winfo_x()+b.winfo_width()<=b.master.winfo_width() for b in buttons)
+                view_buttons=app.explanation.tabs.buttons
+                report['view_buttons_equal']=abs(view_buttons[0].winfo_width()-view_buttons[1].winfo_width())<=2
                 report['callback_errors']=callback_errors
-                if callback_errors or report['sidebar_width']<180 or report['panel_width']<250 or not report['folder_tree_loaded'] or not report['explanation_prepared']:
+                if not report['header_buttons_visible'] or not report['view_buttons_equal'] or callback_errors or report['sidebar_width']<180 or report['panel_width']<250 or not report['folder_tree_loaded'] or not report['explanation_prepared']:
                     raise RuntimeError('追加パネルの確認に失敗しました: '+str(report))
             report['history_size']=app.history.winfo_geometry()
             Path(args.smoke_test).write_text(json.dumps(report,ensure_ascii=False,indent=2),encoding='utf-8')

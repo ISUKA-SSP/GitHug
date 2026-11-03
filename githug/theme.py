@@ -94,6 +94,11 @@ def apply_dark_theme(window):
                         arrowcolor=TEXT, bordercolor=BG)
         style.map(direction + '.TScrollbar', background=[('active', '#61758b')])
         style.configure(direction + '.TProgressbar', background='#5592c5', troughcolor=FIELD)
+    style.configure('Icon.TButton',padding=(4,5),font=('Segoe UI Symbol',12))
+    style.configure('View.TButton',background='#353535',foreground='#bdbdbd',padding=(8,9),font=('Yu Gothic UI',11),anchor='center')
+    style.configure('SelectedView.TButton',background='#245866',foreground='#ffffff',padding=(8,9),font=('Yu Gothic UI',11,'bold'),anchor='center')
+    style.map('View.TButton',background=[('active','#454545')])
+    style.map('SelectedView.TButton',background=[('active','#2b6876'),('pressed','#245866')],foreground=[('!disabled','#ffffff')])
     style.configure('TNotebook',background=PANEL,borderwidth=0)
     style.configure('TNotebook.Tab',background='#383838',foreground='#eeeeee',padding=(14,8))
     style.map('TNotebook.Tab',background=[('selected','#245866'),('active','#484848')],
