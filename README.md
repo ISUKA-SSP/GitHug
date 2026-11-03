@@ -10,6 +10,10 @@ PCのフォルダーからGitHubへドラッグすると、変更を確認して
 
 GitHubの履歴とPCのフォルダーを、ドラッグでつなぐ。説明パネルは必要なときだけ開けます。
 
+右上の二人は、デスクトップマスコット **LivingAgent** のキャラクターです。
+
+[LivingAgentの紹介・配布ページ](https://github.com/ISUKA-SSP/living_agent_public/) ／ [LivingAgentのダウンロード](https://github.com/ISUKA-SSP/living_agent_public/releases)
+
 ## ダウンロード
 
 **[Windows版 v1.0.0 をダウンロード](https://github.com/ISUKA-SSP/GitHug/releases/download/v1.0.0/GitHug-1.0.0-Windows-x64.zip)**
