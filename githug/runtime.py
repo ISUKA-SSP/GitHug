@@ -7,6 +7,7 @@ import platform
 import sys
 import traceback
 import tempfile
+import subprocess
 from . import __version__
 from .platform_support import enable_dpi_awareness, git_executable
 
@@ -25,6 +26,9 @@ def launch(app_class, argv=None):
     root=None
     try:
         root=tk.Tk()
+        callback_errors=[]
+        if args.smoke_test:
+            root.report_callback_exception=lambda kind,value,tb:callback_errors.append(str(value))
         app=app_class(root)
         if args.smoke_test:
             from .core import git
@@ -53,11 +57,37 @@ def launch(app_class, argv=None):
                          {'sha':ids[2],'parents':ids[3],'refs':'work/example','message':'別の枝の変更','date':'2026-11-02T09:00:00+09:00'},
                          {'sha':ids[3],'parents':'','refs':'','message':'最初の版','date':'2026-11-01T10:00:00+09:00'}]
                 app.show_history(records)
-                root.after(350,root.quit)
+                app.folder_browser.set_folder(str(directory/'copy'))
+                app.toggle_explanation()
+                app.inspect_file(str(directory/'copy'/'file.txt'))
+                app.explanation.prepare_input()
+                app.history.graph_view.manual_width=180
+                app.history.graph_view.set_page(app.history_model,[r['sha'] for r in records],True)
+                root.after(1400,root.quit)
                 root.mainloop()
                 root.update_idletasks()
                 report['graph_items']=len(app.history.graph_view.canvas.find_all())
                 report['history_rows']=len(app.history.get_children())
+                report['folder_tree_loaded']=len(app.folder_browser.paths)>1
+                report['explanation_prepared']=bool(app.explanation.payload)
+                report['explanation_panel_visible']=app.explanation_visible
+                report['graph_width']=app.history.graph_view.canvas.winfo_width()
+                if os.name=='nt':
+                    # Capture only the temporary test window for visual review; never a user's session.
+                    capture=Path(args.smoke_test).with_suffix('.png').resolve()
+                    script=('Add-Type -AssemblyName System.Drawing; '
+                            '$b=New-Object System.Drawing.Bitmap([int]$env:GITHUG_CAPTURE_W,[int]$env:GITHUG_CAPTURE_H); '
+                            '$g=[System.Drawing.Graphics]::FromImage($b); '
+                            '$g.CopyFromScreen([int]$env:GITHUG_CAPTURE_X,[int]$env:GITHUG_CAPTURE_Y,0,0,$b.Size); '
+                            '$b.Save($env:GITHUG_CAPTURE_PATH,[System.Drawing.Imaging.ImageFormat]::Png); $g.Dispose(); $b.Dispose()')
+                    subprocess.run(['powershell','-NoProfile','-Command',script],check=True,timeout=30,
+                                   creationflags=subprocess.CREATE_NO_WINDOW,
+                                   env={**os.environ,'GITHUG_CAPTURE_PATH':str(capture),
+                                        'GITHUG_CAPTURE_X':str(root.winfo_rootx()),'GITHUG_CAPTURE_Y':str(root.winfo_rooty()),
+                                        'GITHUG_CAPTURE_W':str(root.winfo_width()),'GITHUG_CAPTURE_H':str(root.winfo_height())})
+                report['callback_errors']=callback_errors
+                if callback_errors or not report['folder_tree_loaded'] or not report['explanation_prepared']:
+                    raise RuntimeError('追加パネルの確認に失敗しました: '+str(report))
             report['history_size']=app.history.winfo_geometry()
             Path(args.smoke_test).write_text(json.dumps(report,ensure_ascii=False,indent=2),encoding='utf-8')
             root.destroy()

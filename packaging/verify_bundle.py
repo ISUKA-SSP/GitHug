@@ -17,7 +17,7 @@ with tempfile.TemporaryDirectory(prefix='GitHug-verify-') as temporary:
     data=json.loads(report.read_text(encoding='utf-8'))
     print(json.dumps(data,ensure_ascii=False,indent=2))
     if completed.returncode or not data.get('gui_initialized'):raise RuntimeError('EXEの起動確認に失敗しました。')
-    if not data.get('frozen') or not data.get('graph_items') or not data.get('git_roundtrip'):
+    if not all(data.get(key) for key in ('frozen','graph_items','git_roundtrip','folder_tree_loaded','explanation_prepared','explanation_panel_visible')) or data.get('callback_errors'):
         raise RuntimeError('GUI・履歴グラフ・同梱Gitの確認に失敗しました。')
     if (folder/'tools'/'git').resolve() not in Path(data['git_executable']).resolve().parents:
         raise RuntimeError('同梱Gitではなく、PC側のGitで起動してしまいました。')

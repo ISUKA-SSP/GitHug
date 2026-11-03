@@ -20,6 +20,8 @@ from .editors import find_vscode, open_vscode
 from .push_ui import PushUI
 from .history_graph import HistoryGraph, history_page
 from .graph_view import GraphView
+from .folder_tree import FolderTree
+from .explanation_panel import ExplanationPanel
 from .drag_hint import DragHint
 from .branding import attach_logo
 
@@ -81,14 +83,17 @@ class App:
         status_label.pack(fill='x')
         status_label.bind('<Configure>',lambda event:status_label.configure(wraplength=max(100,event.width-4)))
         split = ttk.Panedwindow(window, orient='horizontal')
+        self.main_split = split
         split.pack(fill='both', expand=True, padx=16)
         left = ttk.Frame(split, padding=12, style='Card.TFrame')
         split.add(left, weight=1)
         ttk.Label(left, text='プロジェクト', font=('', 12, 'bold')).pack(anchor='w')
         self.projects = tk.Listbox(left, exportselection=False, width=22, font=('Yu Gothic UI',11), activestyle='none', selectborderwidth=0)
-        self.projects.pack(fill='both', expand=True, pady=8)
+        self.projects.configure(height=6)
+        self.projects.pack(fill='x', pady=8)
         self.projects.bind('<<ListboxSelect>>', self.select_project)
         ttk.Label(left,text='上：GitHubの履歴\n下：PCの作業場所\nドラッグで行き来できます',style='Muted.TLabel',wraplength=170).pack(anchor='w',pady=(8,0))
+        self.folder_browser = FolderTree(left, self.inspect_file)
         right = ttk.Frame(split)
         split.add(right, weight=5)
         self.sections = ttk.Panedwindow(right, orient='vertical')
@@ -100,8 +105,8 @@ class App:
         history_header = ttk.Frame(history_tab)
         history_header.grid(row=0, column=0, sticky='ew', pady=(0, 4))
         ttk.Label(history_header, text='GitHubの履歴', style='Heading.TLabel').pack(side='left')
-        ttk.Label(history_header, text='下へドラッグで再現・更新／下から上へドラッグで送信確認', style='Muted.TLabel').pack(side='left', padx=12)
-        self.history_query, self.history_count = self.search_bar(history_tab, '履歴を検索（説明・枝名・履歴番号・日時・自分用メモ）', grid_row=2)
+        ttk.Label(history_header, text='↓ PCへ再現　↑ GitHubへ送信', style='Muted.TLabel').pack(side='left', padx=12)
+        self.history_query, self.history_count = self.search_bar(history_tab, '履歴を検索', grid_row=2)
         self.history = self.table(history_tab, ('date', 'refs', 'message', 'memo'), ('更新日時', '作業の枝・目印', '変更の説明', '自分用メモ'), tree=True, grid_row=4, graph=True)
         self.history.bind('<<TreeviewSelect>>', self.detail)
         self.history.bind('<Button-3>', self.menu)
@@ -123,8 +128,8 @@ class App:
         folders.rowconfigure(3, weight=1, minsize=70)
         self.sections.add(folders, weight=2)
         ttk.Label(folders, text='PCのフォルダー', style='Heading.TLabel').grid(row=0, column=0, sticky='w')
-        ttk.Label(folders, text='再現フォルダーは毎回新規作成。未再現の作業用は履歴・再現日時が空欄です。', style='Muted.TLabel').grid(row=1, column=0, sticky='w', pady=4)
-        self.folder_query, self.folder_count = self.search_bar(folders, 'フォルダーを検索（保存場所・再現日時・状態・履歴番号・自分用メモ）', grid_row=2)
+        ttk.Label(folders, text='選ぶと左下に中身を表示します。', style='Muted.TLabel').grid(row=1, column=0, sticky='w', pady=4)
+        self.folder_query, self.folder_count = self.search_bar(folders, 'フォルダーを検索', grid_row=2)
         self.folders = self.table(folders, ('kind', 'path', 'sha', 'created', 'state', 'memo'), ('種類', '保存場所', '元の履歴', '再現した日時', '状態', '自分用メモ'), grid_row=3)
         self.folders.configure(displaycolumns=('sha', 'created', 'state', 'path', 'memo'))
         self.folders.bind('<Button-3>', self.folder_menu)
@@ -139,6 +144,10 @@ class App:
         ttk.Button(folder_controls, text='フォルダーを開く', command=self.open_folder).pack(side='left', padx=4)
         ttk.Button(folder_controls, text='PowerShell／コマンド', command=self.command_dialog).pack(side='left', padx=4)
         ttk.Button(folder_controls, text='一覧を更新', command=self.check_folder_tab).pack(side='left', padx=4)
+        self.explanation = ExplanationPanel(split, self)
+        self.explanation_visible = False
+        ttk.Button(toolbar, text='説明パネル', command=self.toggle_explanation).pack(side='right', padx=4)
+        self.folders.bind('<<TreeviewSelect>>', self.browse_selected_folder, add='+')
         self.configure_sort('history', self.history, ('#0', 'date', 'refs', 'message', 'memo'))
         self.configure_sort('folders', self.folders, ('sha', 'created', 'state', 'path', 'memo'))
         self.history_query.trace_add('write', lambda *_: self.render_history())
@@ -146,6 +155,24 @@ class App:
         self.populate_projects()
         window.after(150, lambda: self.sections.sashpos(0, int(self.sections.winfo_height() * 0.60)))
         window.after(100, self.poll)
+
+    def toggle_explanation(self):
+        if self.explanation_visible:
+            self.main_split.forget(self.explanation.frame)
+        else:
+            self.main_split.add(self.explanation.frame, weight=0)
+            self.window.update_idletasks()
+            self.main_split.sashpos(1, max(650, self.main_split.winfo_width()-350))
+        self.explanation_visible = not self.explanation_visible
+
+    def inspect_file(self, path):
+        self.explanation.choose({'kind':'file','path':path,'label':'ファイル: '+Path(path).name})
+
+    def browse_selected_folder(self, event=None):
+        items=self.folders.selection()
+        if not items:return
+        folder=self.folders.item(items[0], 'values')[1]
+        if self.folder_browser.root!=folder:self.folder_browser.set_folder(folder)
 
     def guide(self):
         from .platform_support import git_executable
@@ -316,9 +343,28 @@ class App:
             widget.graph_view = graph_view
             graph_view.canvas.grid(row=0, column=0, sticky='nsew')
             graph_view.scrollbar.grid(row=1, column=0, sticky='ew')
-            widget.grid(row=0, column=1, sticky='nsew')
-            scrollbar.grid(row=0, column=2, sticky='ns')
-            horizontal.grid(row=1, column=1, sticky='ew')
+            handle=ttk.Frame(frame,width=7,cursor='sb_h_double_arrow',style='GraphHandle.TFrame')
+            handle.grid(row=0,column=1,sticky='ns',padx=(0,2))
+            frame.columnconfigure(1,weight=0)
+            frame.columnconfigure(2,weight=1)
+            def resize_graph(event):
+                width=max(90,min(600,event.x_root-graph_view.canvas.winfo_rootx()))
+                graph_view.manual_width=width
+                graph_view.canvas.configure(width=width)
+                self.config['graph_width']=width
+                graph_view.schedule()
+            handle.bind('<B1-Motion>',resize_graph)
+            handle.bind('<ButtonRelease-1>',lambda event:self.save())
+            def auto_graph(event):
+                graph_view.manual_width=None
+                self.config.pop('graph_width',None)
+                if graph_view.model:graph_view.set_page(graph_view.model,graph_view.ids,graph_view.enabled)
+                self.save()
+            handle.bind('<Double-1>',auto_graph)
+            if isinstance(self.config.get('graph_width'),int):graph_view.manual_width=max(90,min(600,self.config['graph_width']))
+            widget.grid(row=0, column=2, sticky='nsew')
+            scrollbar.grid(row=0, column=3, sticky='ns')
+            horizontal.grid(row=1, column=2, sticky='ew')
             def scrolled(first, last):
                 scrollbar.set(first, last)
                 graph_view.schedule()
@@ -375,6 +421,8 @@ class App:
         if self.busy: return
         indices = self.projects.curselection()
         if not indices: return
+        self.folder_browser.set_folder(None)
+        self.explanation.choose(None)
         self.current = self.config['projects'][indices[0]]
         self.project = Project(self.config['root'], self.current['url'])
         self.records = {}
@@ -455,6 +503,8 @@ class App:
             subject = r['message'][:100] + ('…' if len(r['message']) > 100 else '')
             parents = '・'.join(value[:8] for value in r['parents'].split()) or '最初の履歴'
             self.selection.set(subject + '\n前につながる履歴: ' + parents)
+            if hasattr(self, 'explanation'):
+                self.explanation.choose({'kind':'history','project':self.project,'sha':items[0], 'label':self.project.name+' / '+items[0][:8]+' '+subject})
 
     def menu(self, event):
         item = self.history.identify_row(event.y)

@@ -3,7 +3,7 @@ import tkinter as tk
 from tkinter import ttk
 from tkinter import font as tkfont
 
-BG = '#0e1824'
+BG = '#191919'
 
 
 class GraphView:
@@ -13,6 +13,7 @@ class GraphView:
         self.canvas = tk.Canvas(parent, width=200, background=BG, highlightthickness=0)
         self.scrollbar = ttk.Scrollbar(parent, orient='horizontal', command=self.scroll_x)
         self.canvas.configure(xscrollcommand=self.scrollbar.set)
+        self.manual_width = None
         self.model = None
         self.ids = []
         self.enabled = True
@@ -41,7 +42,7 @@ class GraphView:
         self.model, self.ids, self.enabled = model, list(ids), enabled
         if enabled:
             width = max(self.header_font.measure('分岐・合流') + 20, min(240, model.width * 26 + 28))
-            self.canvas.configure(width=width)
+            self.canvas.configure(width=getattr(self,'manual_width',None) or width)
             self.canvas.grid()
             self.scrollbar.grid()
         else:
@@ -114,5 +115,5 @@ class GraphView:
             if sha == self.selected:
                 canvas.create_oval(x(row.lane)-10, center-10, x(row.lane)+10, center+10, outline=row.color, width=1)
         left = canvas.canvasx(0)
-        canvas.create_rectangle(left, 0, left + canvas.winfo_width(), heading, fill='#192a3b', outline='')
+        canvas.create_rectangle(left, 0, left + canvas.winfo_width(), heading, fill='#303030', outline='')
         canvas.create_text(left+10, max(10, heading/2), anchor='w', text='分岐・合流', fill='#c7d7e8', font=('Yu Gothic UI', 10))
