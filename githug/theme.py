@@ -94,6 +94,10 @@ def apply_dark_theme(window):
                         arrowcolor=TEXT, bordercolor=BG)
         style.map(direction + '.TScrollbar', background=[('active', '#61758b')])
         style.configure(direction + '.TProgressbar', background='#5592c5', troughcolor=FIELD)
+    style.configure('TNotebook',background=PANEL,borderwidth=0)
+    style.configure('TNotebook.Tab',background='#383838',foreground='#eeeeee',padding=(14,8))
+    style.map('TNotebook.Tab',background=[('selected','#245866'),('active','#484848')],
+              foreground=[('selected','#ffffff'),('disabled','#999999'),('!disabled','#eeeeee')])
     check_indicators(window, style)
     from .platform_support import dark_titlebar
     def mapped(event):

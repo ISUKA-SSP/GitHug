@@ -35,7 +35,7 @@ jobs:
         shell: pwsh
         run: |
           ./packaging/scan_windows.ps1 -Target dist/GitHug -Report build/security/current-folder.json
-          ./packaging/scan_windows.ps1 -Target dist/GitHug-0.7.0-Windows-x64.zip -Report build/security/current-zip.json
+          ./packaging/scan_windows.ps1 -Target dist/GitHug-0.7.1-Windows-x64.zip -Report build/security/current-zip.json
       - name: Verify EXE with bundled Git
         run: python packaging/verify_bundle.py dist/GitHug build/windows-smoke.json
       - name: Upload Windows application

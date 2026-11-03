@@ -59,6 +59,10 @@ def launch(app_class, argv=None):
                 app.show_history(records)
                 app.folder_browser.set_folder(str(directory/'copy'))
                 app.toggle_explanation()
+                settings=app.explanation.settings_dialog()
+                root.update_idletasks()
+                report['settings_dialog_opened']=settings.winfo_exists()
+                settings.destroy()
                 app.inspect_file(str(directory/'copy'/'file.txt'))
                 app.explanation.prepare_input()
                 app.history.graph_view.manual_width=180

@@ -35,3 +35,20 @@ class ExplainTests(unittest.TestCase):
         self.assertNotIn('secret-key',str(caught.exception))
         self.assertEqual(call.call_count,1)
         self.assertNotEqual(cache_key('model-a','x'),cache_key('model-b','x'))
+
+class KeyInputTests(unittest.TestCase):
+    def test_printable_symbols_are_preserved_and_not_rejected_as_spaces(self):
+        from githug.explaining import normalize_api_key
+        value='test-only.AQ+/=:~!'
+        self.assertEqual(normalize_api_key('  '+value+'\r\n'),value)
+        response=io.StringIO(json.dumps({'candidates':[{'content':{'parts':[{'text':'ok'}]}}]}))
+        with patch('githug.explaining.urlopen',return_value=response) as call:
+            self.assertEqual(explain(value,'test-model','test'),'ok')
+        self.assertEqual(call.call_args.args[0].get_header('X-goog-api-key'),value)
+
+    def test_whitespace_and_header_injection_never_reach_network_or_echo_key(self):
+        for value in ('abc def','abc\r\nx-inject: y','abc\u200bdef','abc\x00def','ＡＢＣ'):
+            with self.subTest(value=repr(value)),patch('githug.explaining.urlopen') as call:
+                with self.assertRaises(ValueError) as caught:explain(value,'test-model','test')
+                call.assert_not_called()
+                self.assertNotIn(value,str(caught.exception))
