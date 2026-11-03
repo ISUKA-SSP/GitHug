@@ -6,6 +6,10 @@ GitHubのファイルを、Windowsのフォルダー操作に近い感覚で扱�
 履歴を選んでPCへドラッグすると、その時点のファイルを別フォルダーに再現。
 PCのフォルダーからGitHubへドラッグすると、変更を確認して送る画面を開きます。
 
+![GitHug v1.0.0：履歴グラフ・フォルダーツリー・AI説明パネル](docs/images/githug-v1.0.0.png)
+
+GitHubの履歴とPCのフォルダーを、ドラッグでつなぐ。説明パネルは必要なときだけ開けます。
+
 ## ダウンロード
 
 **[Windows版 v1.0.0 をダウンロード](https://github.com/ISUKA-SSP/GitHug/releases/download/v1.0.0/GitHug-1.0.0-Windows-x64.zip)**
