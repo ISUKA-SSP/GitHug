@@ -1,0 +1,119 @@
+name: Build Windows portable
+
+on:
+  push:
+    branches: [main, 'gpt/first-prototype']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: windows-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  windows:
+    runs-on: windows-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v7.1.0
+        with:
+          python-version: '3.13'
+          architecture: x64
+      - name: Install packaging dependencies
+        run: python -m pip install -r packaging/requirements-build.txt
+      - name: Test source
+        run: python -m unittest discover -s tests -v
+      - name: Build portable application
+        run: python packaging/build_windows.py
+      - name: Scan current distribution with Defender
+        shell: pwsh
+        run: |
+          ./packaging/scan_windows.ps1 -Target dist/GitHug -Report build/security/current-folder.json
+          ./packaging/scan_windows.ps1 -Target dist/GitHug-1.0.0-Windows-x64.zip -Report build/security/current-zip.json
+      - name: Verify EXE with bundled Git
+        run: python packaging/verify_bundle.py dist/GitHug build/windows-smoke.json
+      - name: Upload Windows application
+        uses: actions/upload-artifact@v7.0.2
+        with:
+          name: GitHug-Windows-x64
+          path: dist/GitHug/
+          include-hidden-files: true
+          if-no-files-found: error
+          retention-days: 30
+      - name: Upload release ZIP and checksum
+        uses: actions/upload-artifact@v7.0.2
+        with:
+          name: GitHug-release-files
+          path: |
+            dist/GitHug-1.0.0-Windows-x64.zip
+            dist/GitHug-1.0.0-Windows-x64.sha256
+          if-no-files-found: error
+          retention-days: 30
+      - name: Upload build diagnostics
+        if: always()
+        uses: actions/upload-artifact@v7.0.2
+        with:
+          name: GitHug-build-diagnostics
+          path: |
+            build/windows-smoke.json
+            build/windows-smoke.png
+            build/security/
+            dist/*.sha256
+            build/pyinstaller/GitHug/warn-GitHug.txt
+          if-no-files-found: ignore
+
+  baseline-security:
+    runs-on: windows-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/download-artifact@v8.0.2
+        with:
+          name: GitHug-Windows-x64
+          run-id: 41481657428
+          github-token: ${{ github.token }}
+          path: build/baseline
+      - name: Scan previously blocked distribution without running it
+        shell: pwsh
+        run: ./packaging/scan_windows.ps1 -Target build/baseline -Report build/security/baseline-folder.json
+      - uses: actions/upload-artifact@v7.0.2
+        if: always()
+        with:
+          name: GitHug-baseline-security
+          path: build/security/
+          if-no-files-found: ignore
+
+  publish-release:
+    needs: windows
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push' && contains(github.event.head_commit.message, '[release v1.0.0]')
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+      actions: read
+    steps:
+      - uses: actions/checkout@v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/download-artifact@v8.0.2
+        with:
+          name: GitHug-release-files
+          path: release-files
+      - name: Verify ZIP digest
+        working-directory: release-files
+        run: sha256sum --check GitHug-1.0.0-Windows-x64.sha256
+      - name: Publish v1.0.0
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          gh release create v1.0.0 release-files/GitHug-1.0.0-Windows-x64.zip release-files/GitHug-1.0.0-Windows-x64.sha256 --target "$GITHUB_SHA" --title "GitHug v1.0.0" --notes-file docs/releases/v1.0.0.md --draft
+          gh release edit v1.0.0 --draft=false --latest
