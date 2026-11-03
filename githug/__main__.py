@@ -21,6 +21,7 @@ from .push_ui import PushUI
 from .history_graph import HistoryGraph, history_page
 from .graph_view import GraphView
 from .folder_tree import FolderTree
+from .splitter import SidebarSplitter
 from .explanation_panel import ExplanationPanel
 from .drag_hint import DragHint
 from .branding import attach_logo
@@ -82,7 +83,7 @@ class App:
         status_label=ttk.Label(footer,textvariable=self.status,style='Muted.TLabel',wraplength=1250)
         status_label.pack(fill='x')
         status_label.bind('<Configure>',lambda event:status_label.configure(wraplength=max(100,event.width-4)))
-        split = ttk.Panedwindow(window, orient='horizontal')
+        split = SidebarSplitter(window, orient='horizontal')
         self.main_split = split
         split.pack(fill='both', expand=True, padx=16)
         left = ttk.Frame(split, padding=12, style='Card.TFrame')
