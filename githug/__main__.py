@@ -154,6 +154,7 @@ class App:
         self.folder_query.trace_add('write', lambda *_: self.render_folders())
         self.populate_projects()
         window.after(150, lambda: self.sections.sashpos(0, int(self.sections.winfo_height() * 0.60)))
+        window.after(150, lambda: self.main_split.sashpos(0, 245))
         window.after(100, self.poll)
 
     def toggle_explanation(self):
@@ -162,6 +163,7 @@ class App:
         else:
             self.main_split.add(self.explanation.frame, weight=0)
             self.window.update_idletasks()
+            self.main_split.sashpos(0, 245)
             self.main_split.sashpos(1, max(650, self.main_split.winfo_width()-350))
         self.explanation_visible = not self.explanation_visible
 

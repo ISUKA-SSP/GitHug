@@ -35,6 +35,7 @@ class ExplanationPanel:
         self.output=self.text_area(tabs,'説明');self.preview=self.text_area(tabs,'送信内容')
         self.tabs=tabs
         ttk.Button(self.frame,text='説明をコピー',command=self.copy).pack(anchor='e',pady=(4,0))
+        for variable in (self.mode,self.base,self.detail):variable.trace_add('write',self.invalidate)
         self.frame.after(80,self.poll)
 
     def text_area(self,tabs,title):
@@ -55,6 +56,10 @@ class ExplanationPanel:
             self.payload=None;self.send.configure(state='disabled')
             self.write(self.preview,'');self.state.set('送信内容を確認してから依頼します。前の説明の対象は説明欄の先頭に表示します。')
 
+    def invalidate(self,*args):
+        self.payload=None;self.send.configure(state='disabled')
+        if not self.busy:self.state.set('条件を変更しました。送信内容をもう一度確認してください。')
+
     def launch(self,kind,function):
         if self.busy:return
         self.busy=True;self.prepare.configure(state='disabled');self.send.configure(state='disabled')
@@ -68,7 +73,7 @@ class ExplanationPanel:
         target=dict(self.target);mode=self.mode.get();base=self.base.get().strip();detail=self.detail.get()
         if target['kind']=='history' and mode=='枝の変更' and not base:
             self.state.set('枝の比較元を入力してください。');return
-        self.prepared_target=target;self.payload=None
+        self.prepared_target=target;self.prepared_options=(mode,base,detail);self.payload=None
         self.state.set('送信する内容を準備中…（まだ通信しません）')
         def build():
             text=file_input(target['path'],detail) if target['kind']=='file' else history_input(target['project'],target['sha'],base if mode=='枝の変更' else None,detail)
@@ -93,7 +98,7 @@ class ExplanationPanel:
                 self.state.set(error);self.send.configure(state='normal' if self.payload else 'disabled');continue
             if kind=='prepare':
                 # A selection change during preparation invalidates the prepared send action.
-                if self.target!=self.prepared_target:
+                if self.target!=self.prepared_target or self.prepared_options!=(self.mode.get(),self.base.get().strip(),self.detail.get()):
                     self.payload=None;self.state.set('選択が変わりました。もう一度送信内容を確認してください。');continue
                 self.payload=value;self.write(self.preview,value);self.tabs.select(1)
                 self.state.set(str(len(value))+'文字をGoogle Geminiへ送信します。内容を確認してください。')
