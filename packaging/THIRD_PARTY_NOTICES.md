@@ -30,3 +30,6 @@ Exact package versions and the downloaded archive's SHA-256 are recorded in `bui
   source are available at https://github.com/ISUKA-SSP/GitHug .
 - wcwidth 0.2.13 (MIT): https://github.com/jquast/wcwidth/tree/0.2.13
   Its available license is included in `licenses/wcwidth`.
+
+- pywin32 311 (PSF-based license): https://github.com/mhammond/pywin32/releases/tag/b311
+  Windows Shell recycle-bin operation. Available license files are included in `licenses/pywin32`.

@@ -10,6 +10,7 @@ import tkinter as tk
 from tkinter import ttk, filedialog, messagebox, simpledialog
 from .core import Project, ComparisonCancelled
 from .console_panel import ConsolePanel
+from .folder_removal import checked_removal, identity, recycle_registered, hide_missing
 from . import __version__
 from .listing import date_value, visible_rows
 from .theme import apply_dark_theme
@@ -992,7 +993,7 @@ class App:
                 'search': ' '.join((kind, folder, sha, date, created, state, memo)),
                 'sort': {'kind': kind.casefold(), 'path': folder.casefold(), 'sha': sha,
                          'created': timestamp, 'state': state, 'memo': memo.casefold()}})
-        versions = {str(Path(r['folder']).resolve()): r for r in self.project.folder_versions()}
+        versions = {str(Path(r['folder']).resolve()): r for r in self.project.folder_versions() if not r.get('hidden_from_list',False)}
         for index, folder in enumerate(self.current.get('work', [])):
             record = versions.get(str(Path(folder).resolve()), {})
             add('work:' + str(index), '作業用（登録）', folder, record.get('sha', ''), record.get('created', ''))
@@ -1065,6 +1066,48 @@ class App:
         except OSError as exc:
             messagebox.showinfo('フォルダーを開けませんでした', str(exc))
 
+    def recycle_selected_folder(self):
+        if self.busy or not self.project:return
+        items=self.folders.selection()
+        if not items:return
+        values=self.folders.item(items[0],'values');folder=values[1]
+        project=self.project
+        projects=[Project(self.config['root'],p['url']) for p in self.config['projects']]
+        try:
+            path=checked_removal(project,folder,projects)
+            expected=identity(path)
+        except (OSError,RuntimeError) as exc:
+            messagebox.showinfo('フォルダーを削除できません',str(exc),parent=self.window);return
+        console=getattr(self,'console',None)
+        if console and console.active:
+            current=Path(console.folder).resolve()
+            if current==path or path in current.parents or current in path.parents:
+                messagebox.showinfo('PowerShellを確認してください','このフォルダーのPowerShellが動いています。処理を終え、PowerShellを終了してからやり直してください。',parent=self.window);return
+        kind='普段編集している作業用フォルダー' if items[0].startswith('work:') else 'コピーしたフォルダー'
+        text=(kind+'をごみ箱へ移動しますか？\n\n'+str(path)+
+              '\n\n中のファイルと手元の編集もまとめて移動します。\nGitHub上の履歴や、更新前のバックアップは削除しません。\n記録は一覧に残り、後から「一覧から取り除く」で整理できます。')
+        if not messagebox.askyesno('フォルダーをごみ箱へ移動',text,parent=self.window,default='no'):return
+        def done(_):
+            self.load_folders()
+            root=self.folder_browser.root
+            if root and (Path(root).resolve()==path or path in Path(root).resolve().parents):self.folder_browser.set_folder(None)
+            self.status.set('ごみ箱へ移動しました。記録は一覧に残しています: '+str(path))
+        self.run('フォルダーをごみ箱へ移動しています…',lambda:recycle_registered(project,path,expected,projects),done)
+
+    def remove_missing_folder(self):
+        if self.busy or not self.project:return
+        items=self.folders.selection()
+        if not items:return
+        folder=self.folders.item(items[0],'values')[1]
+        if self.folder_state(folder)!='削除または移動されています':self.load_folders();return
+        if not messagebox.askyesno('見つからない項目を一覧から取り除く',
+            'この項目を一覧から取り除きますか？\n\n'+folder+'\n\n移動先のファイルは削除しません。GitHubの履歴と自分用メモは残します。',parent=self.window,default='no'):return
+        try:
+            hide_missing(self.project,self.current,folder);self.save();self.load_folders()
+            if self.folder_browser.root==folder:self.folder_browser.set_folder(None)
+            self.status.set('見つからない項目を一覧から取り除きました。')
+        except (OSError,ValueError,RuntimeError) as exc:messagebox.showinfo('一覧を整理できませんでした',str(exc),parent=self.window)
+
     def folder_menu(self, event):
         item = self.folders.identify_row(event.y)
         if not item: return
@@ -1080,6 +1123,13 @@ class App:
             menu.add_command(label='同じ場所への更新を無効にする' if enabled else 'この作業フォルダーの更新を有効にする', command=self.work_update_permission)
         menu.add_command(label='PowerShellで開く／コマンドを実行', command=self.command_dialog)
         menu.add_command(label='変更を確認してGitHubへ送る', command=self.send_selected_folder)
+        menu.add_separator()
+        folder=self.folders.item(item,'values')[1]
+        state=self.folder_state(folder)
+        if state=='削除または移動されています':
+            menu.add_command(label='一覧から取り除く（ファイルは削除しません）',command=self.remove_missing_folder)
+        else:
+            menu.add_command(label='フォルダーをごみ箱へ移動',command=self.recycle_selected_folder,state='normal' if state=='利用できます' else 'disabled')
         try:
             menu.tk_popup(event.x_root, event.y_root)
         finally:

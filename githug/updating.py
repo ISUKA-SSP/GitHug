@@ -92,6 +92,7 @@ def record_for_folder(project, folder):
     metadata = project.base / 'records'
     for path in metadata.glob('*.json'):
         record = json.loads(path.read_text(encoding='utf-8'))
+        if record.get('hidden_from_list',False):continue
         if Path(record['folder']).resolve() == Path(folder).resolve():
             return path, record
     return None, None
