@@ -54,3 +54,17 @@ class MascotTests(unittest.TestCase):
             indices=[i for values in spec['groups'].values() for i in values]
             self.assertEqual(sorted(indices),list(range(27)))
             self.assertEqual(spec['count'],27)
+
+
+class ErrorTimingTests(unittest.TestCase):
+    def test_error_reaction_is_started_after_modal_dialog(self):
+        import queue
+        from types import SimpleNamespace
+        from unittest.mock import Mock,patch
+        from githug.__main__ import App
+        order=[];events=queue.Queue();events.put((Mock(),None,'test error'))
+        view=Mock();view.end.side_effect=lambda source,error=False:order.append('fall' if error else 'end')
+        app=SimpleNamespace(events=events,busy=True,projects=Mock(),operation_state=Mock(),activity_bar=Mock(),status=Mock(),mascot_view=view,window=Mock(),poll=Mock())
+        with patch('githug.__main__.messagebox.showinfo',side_effect=lambda *args:order.append('dialog')):
+            App.poll(app)
+        self.assertEqual(order,['end','dialog','fall'])

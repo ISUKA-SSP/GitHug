@@ -530,13 +530,14 @@ class App:
         try:
             callback, result, error = self.events.get_nowait()
             self.busy = False
-            if hasattr(self,'mascot_view'):self.mascot_view.end('app',bool(error))
+            if hasattr(self,'mascot_view'):self.mascot_view.end('app')
             self.projects.configure(state='normal')
             self.operation_state.set('待機中')
             self.activity_bar.stop()
             if error:
                 self.status.set('操作を完了できませんでした。案内を確認してください。')
                 messagebox.showinfo('状況の確認', error)
+                if hasattr(self,'mascot_view'):self.mascot_view.end('app',True)
             else:
                 self.status.set('完了しました。')
                 callback(result)
