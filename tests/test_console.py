@@ -71,7 +71,10 @@ class WindowsConsoleTests(unittest.TestCase):
         self.session.execute("Write-Host -NoNewline ('RETAINED:'+$label)")
         self.wait(lambda:self.session.ready and 'RETAINED:日本語' in self.output)
         python=str(Path(sys.executable)).replace("'","''")
-        self.session.execute("& '"+python+"' -u -c 'v=input(\"PYQUESTION:\");print(\"PYANSWER:\"+v)'")
+        input_file=self.folder/'input_test.py'
+        input_file.write_text('value=input("PYQUESTION:")\nprint("PYANSWER:"+value)\n',encoding='utf-8')
+        script_path=str(input_file).replace("'","''")
+        self.session.execute("& '"+python+"' -u '"+script_path+"'")
         self.wait(lambda:'PYQUESTION:' in self.output)
         self.session.write('回答\r');self.wait(lambda:self.session.ready and 'PYANSWER:回答' in self.output)
         self.assertFalse(list(Path(self.session._temporary.name).iterdir()),'command text should be removed before execution')
