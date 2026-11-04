@@ -27,6 +27,7 @@ from .splitter import SidebarSplitter, SectionSplitter
 from .explanation_panel import ExplanationPanel
 from .drag_hint import DragHint
 from .branding import attach_logo
+from .mascot import MascotView, operation_pose
 from .guidance import HoverHelp, register_buttons
 
 class App:
@@ -68,8 +69,10 @@ class App:
         ttk.Label(appbar, text='v' + __version__, style='Badge.TLabel').pack(side='left', padx=16)
         # Use the supplied illustration unchanged; native Tk scaling needs no imaging dependency.
         self.mascot_image = tk.PhotoImage(master=window, file=str(Path(__file__).parent/'assets'/'living_agent.png')).subsample(4,4)
-        self.mascot = tk.Label(appbar, image=self.mascot_image, bg='#202020', borderwidth=0)
-        self.mascot.pack(side='right', padx=(16,0))
+        self.mascot_view = MascotView(appbar,self.guide,self.mascot_image,self.config.get('mascot_animation',True))
+        self.mascot = self.mascot_view.canvas
+        self.mascot.pack(side='right',padx=(16,0))
+        self.tooltips.add(self.mascot,'ステラとシリカです。クリックすると使い方・環境を開きます。動きは設定でOFFにできます。')
         self.operation_state = tk.StringVar(value='待機中')
         ttk.Button(appbar, text='使い方・環境', command=self.guide, style='Quiet.TButton').pack(side='right')
         ttk.Button(appbar, text='設定', command=self.settings_dialog, style='Quiet.TButton').pack(side='right', padx=4)
@@ -193,17 +196,21 @@ class App:
         existing=getattr(self,'settings_window',None)
         if existing is not None and existing.winfo_exists():existing.lift();return existing
         popup=tk.Toplevel(self.window);self.settings_window=popup
-        popup.title('GitHug — 表示・操作の設定');popup.geometry('620x330');popup.minsize(520,310)
+        popup.title('GitHug — 表示・操作の設定');popup.geometry('640x410');popup.minsize(540,390)
         area=ttk.Frame(popup,padding=18);area.pack(fill='both',expand=True)
         ttk.Label(area,text='操作を助ける表示',style='Heading.TLabel').pack(anchor='w',pady=(0,12))
         hover=tk.BooleanVar(value=self.config.get('hover_help',True))
         guide=tk.BooleanVar(value=self.config.get('selection_guide',True))
+        animation=tk.BooleanVar(value=self.config.get('mascot_animation',True))
         ttk.Checkbutton(area,text='マウスを重ねたときに説明を表示',variable=hover).pack(anchor='w',pady=6)
         ttk.Label(area,text='少し待つと表示し、数秒で消えます。',style='Muted.TLabel').pack(anchor='w')
         ttk.Checkbutton(area,text='選んだ履歴・フォルダーの操作案内を左側に表示',variable=guide).pack(anchor='w',pady=(16,6))
+        ttk.Checkbutton(area,text='キャラクターを動かす',variable=animation).pack(anchor='w',pady=(16,6))
+        ttk.Label(area,text='OFFにすると静止画になります。クリックによる案内は使えます。',style='Muted.TLabel').pack(anchor='w')
         buttons=ttk.Frame(area);buttons.pack(side='bottom',fill='x')
         def apply():
-            self.config.update(hover_help=hover.get(),selection_guide=guide.get());self.save()
+            self.config.update(hover_help=hover.get(),selection_guide=guide.get(),mascot_animation=animation.get());self.save()
+            self.mascot_view.set_enabled(animation.get())
             self.tooltips.set_enabled(hover.get())
             if guide.get():self.guide_label.pack(anchor='w',pady=(8,0),before=self.folder_browser.frame)
             else:self.guide_label.pack_forget()
@@ -238,8 +245,11 @@ class App:
         if self.folder_browser.root!=folder:self.folder_browser.set_folder(folder)
 
     def guide(self):
+        existing=getattr(self,'guide_window',None)
+        if existing is not None and existing.winfo_exists():existing.lift();return existing
         from .platform_support import git_executable
         popup=tk.Toplevel(self.window)
+        self.guide_window=popup
         popup.title('GitHug — 使い方・環境')
         popup.geometry('760x540')
         popup.minsize(600,450)
@@ -258,8 +268,16 @@ class App:
             'APIキーは接続設定で任意保存できます。保存先はWindowsの資格情報マネージャーです。\n'
             'マウスの説明・左側の操作案内は「設定」で切り替えられます。\n\n'
             '使用するGit：'+git_executable()+'\n設定：'+str(self.config_path))
-        ttk.Label(popup,text=text,wraplength=700,padding=(16,0),justify='left').pack(fill='both',expand=True)
-        ttk.Button(popup,text='閉じる',command=popup.destroy).pack(anchor='e',padx=16,pady=16)
+        body=ttk.Frame(popup,padding=(16,0));body.pack(fill='both',expand=True)
+        reader=tk.Text(body,wrap='word',height=12,width=1,font=('Yu Gothic UI',11),borderwidth=0,padx=4,pady=4)
+        scroll=ttk.Scrollbar(body,command=reader.yview);scroll.pack(side='right',fill='y')
+        reader.configure(yscrollcommand=scroll.set);reader.pack(fill='both',expand=True)
+        reader.insert('1.0',text);reader.configure(state='disabled')
+        footer=ttk.Frame(popup,padding=16);footer.pack(fill='x')
+        import webbrowser
+        ttk.Button(footer,text='ステラとシリカについて — LivingAgent',command=lambda:webbrowser.open('https://github.com/ISUKA-SSP/living_agent_public/')).pack(side='left')
+        ttk.Button(footer,text='閉じる',command=popup.destroy).pack(side='right')
+        return popup
 
     def configure_sort(self, name, table, columns):
         table.sort_labels = {col: table.heading(col, 'text') for col in columns}
@@ -495,6 +513,7 @@ class App:
     def run(self, description, task, callback):
         if self.busy: return
         self.busy = True
+        if hasattr(self,'mascot_view'):self.mascot_view.begin('app',operation_pose(description))
         self.projects.configure(state='disabled')
         self.operation_state.set('処理中')
         self.operation_label = description
@@ -511,12 +530,14 @@ class App:
         try:
             callback, result, error = self.events.get_nowait()
             self.busy = False
+            if hasattr(self,'mascot_view'):self.mascot_view.end('app')
             self.projects.configure(state='normal')
             self.operation_state.set('待機中')
             self.activity_bar.stop()
             if error:
                 self.status.set('操作を完了できませんでした。案内を確認してください。')
                 messagebox.showinfo('状況の確認', error)
+                if hasattr(self,'mascot_view'):self.mascot_view.end('app',True)
             else:
                 self.status.set('完了しました。')
                 callback(result)

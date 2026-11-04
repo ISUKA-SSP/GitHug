@@ -1,0 +1,113 @@
+{
+  "frame_size": [
+    96,
+    80
+  ],
+  "columns": 9,
+  "characters": {
+    "silica": {
+      "file": "silica.png",
+      "groups": {
+        "idle": [
+          0,
+          1,
+          2,
+          3,
+          4,
+          5,
+          6,
+          7
+        ],
+        "walk": [
+          8,
+          9,
+          10,
+          11
+        ],
+        "carry": [
+          12,
+          13,
+          14,
+          15
+        ],
+        "down": [
+          16,
+          17,
+          18
+        ],
+        "up": [
+          19,
+          20
+        ],
+        "fall": [
+          21,
+          22,
+          23,
+          24,
+          25,
+          26
+        ]
+      },
+      "count": 27
+    },
+    "stella": {
+      "file": "stella.png",
+      "groups": {
+        "idle": [
+          0,
+          1,
+          2,
+          3,
+          4,
+          5,
+          6,
+          7
+        ],
+        "walk": [
+          8,
+          9,
+          10,
+          11
+        ],
+        "carry": [
+          12,
+          13,
+          14,
+          15
+        ],
+        "down": [
+          16,
+          17,
+          18
+        ],
+        "up": [
+          19,
+          20
+        ],
+        "fall": [
+          21,
+          22,
+          23,
+          24,
+          25,
+          26
+        ]
+      },
+      "count": 27
+    }
+  },
+  "sources": {
+    "silica_strip(2).png": "b58c7fb87ba023957e92ec9990bf5951bdf4ab6c29fcc10588c7ccacbaf26314",
+    "silica_walk_trial(1).png": "774fc8687c86ff61df4a19276e45a5c679510fd65c42626da47f1498f1a49e9b",
+    "箱を抱えた銀髪少女の歩行スプライト.png": "83a9a2f7e8001b5fdccb48428a6b763169373af65d9fed52774f95d930274d9c",
+    "silica_sit_down.png": "943a06218fa219421344a3745bd16339aca088dae548783b993d25ae2e077afe",
+    "silica_stand_up.png": "fdefe00934d0ae7d1053b3f2376daa5686ec2d9dbb6c8504f1837bdcc2681004",
+    "image(20261104-091332).png": "9cd44f0859021d3e0df2a92c3d8b4e07592494ebced54db869e59ef38f245b3a",
+    "stella_strip(2).png": "cb69df12dc7e5632bd953e28763390fc1a4cd4017e1d3648f33a55ee0b1e1dbf",
+    "stella_walk_trial(1).png": "3c46eb1f7b874226c953c563d737f7397f9c2aabcff21091120a5e5c58151219",
+    "箱を抱えて歩く紫髪のちびキャラ.png": "3219c7831437a55620281b8df66129a2db894197dc98f507b48951a9eb610ae4",
+    "stella_sit_down(1).png": "a164680ea240c2b08c99ccde6a8273c97d293a995185118a3cd42dc24a9f1b79",
+    "stella_stand_up.png": "f4a8690e380dc62b56be1c5d4766854373dd1b8a19cd023eca4a754e93836c0c",
+    "image(20261104-091353).png": "2aeb218c35088f6963c5c12c8ffe021cf69bbce530132b64a824801e7334c042"
+  }
+}

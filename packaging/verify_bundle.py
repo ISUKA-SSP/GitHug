@@ -17,7 +17,7 @@ with tempfile.TemporaryDirectory(prefix='GitHug-verify-') as temporary:
     data=json.loads(report.read_text(encoding='utf-8'))
     print(json.dumps(data,ensure_ascii=True,indent=2))
     if completed.returncode or not data.get('gui_initialized'):raise RuntimeError('EXEの起動確認に失敗しました。')
-    if not all(data.get(key) for key in ('frozen','graph_items','git_roundtrip','folder_tree_loaded','explanation_prepared','explanation_panel_visible','console_interactive','console_hidden_continues','console_reopens_same_session','console_controls_fit','console_stops','folder_recycle_preserved_data','missing_folder_removed')) or data.get('callback_errors'):
+    if not all(data.get(key) for key in ('frozen','graph_items','git_roundtrip','folder_tree_loaded','explanation_prepared','explanation_panel_visible','console_interactive','console_hidden_continues','console_reopens_same_session','console_controls_fit','console_stops','folder_recycle_preserved_data','missing_folder_removed','mascot_assets_loaded','mascot_mirror_correct','mascot_carry','mascot_thinking','mascot_falls_once','mascot_recovers','mascot_off_stops_timer','mascot_click_opens_guide','living_agent_link_visible')) or data.get('callback_errors'):
         raise RuntimeError('GUI・履歴グラフ・同梱Gitの確認に失敗しました。')
     if (folder/'tools'/'git').resolve() not in Path(data['git_executable']).resolve().parents:
         raise RuntimeError('同梱Gitではなく、PC側のGitで起動してしまいました。')
