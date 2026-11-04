@@ -24,7 +24,7 @@ class SectionSplitter(tk.PanedWindow):
                          sashwidth=7,sashrelief='flat',opaqueresize=True,showhandle=False)
 
     def add(self,child,weight=0,**kwargs):
-        minimum=220 if not self.panes() else 160
+        minimum=320 if not self.panes() else 220
         super().add(child,minsize=minimum,stretch='always',**kwargs)
 
     def sashpos(self,index,newpos=None):

@@ -156,9 +156,15 @@ class App:
         self.history_query.trace_add('write', lambda *_: self.render_history())
         self.folder_query.trace_add('write', lambda *_: self.render_folders())
         self.populate_projects()
-        window.after(150, lambda: self.sections.sashpos(0, int(self.sections.winfo_height() * 0.60)))
+        self._sections_initialized = False
+        self.sections.bind('<Configure>', self.initialize_sections, add='+')
         window.after(150, lambda: self.main_split.sashpos(0, 245))
         window.after(100, self.poll)
+
+    def initialize_sections(self, event):
+        if not self._sections_initialized and event.height >= 540:
+            self._sections_initialized = True
+            self.window.after_idle(lambda: self.sections.sashpos(0, int(self.sections.winfo_height() * 0.60)))
 
     def toggle_explanation(self):
         if self.explanation_visible:

@@ -97,6 +97,8 @@ def launch(app_class, argv=None):
                                    env={**os.environ,'GITHUG_CAPTURE_PATH':str(capture),
                                         'GITHUG_CAPTURE_X':str(root.winfo_rootx()),'GITHUG_CAPTURE_Y':str(root.winfo_rooty()),
                                         'GITHUG_CAPTURE_W':str(root.winfo_width()),'GITHUG_CAPTURE_H':str(root.winfo_height())})
+                report['section_geometry']=app.sections.winfo_geometry()
+                report['section_divider']=app.sections.sashpos(0)
                 report['search_header_geometry']=[{'header':h.winfo_geometry(),'entry':h.entry.winfo_geometry(),'button':h.clear_button.winfo_geometry(),'header_x':h.winfo_rootx(),'button_right':h.clear_button.winfo_rootx()+h.clear_button.winfo_width(),'mapped':h.winfo_ismapped()} for h in (app.history_header,app.folder_header)]
                 report['search_headers_fit']=all(h.entry.winfo_width()>=30 and h.clear_button.winfo_rootx()+h.clear_button.winfo_width()<=h.winfo_rootx()+h.winfo_width() for h in (app.history_header,app.folder_header))
                 if not all(report[k] for k in ('history_search_filters','history_search_clears','search_headers_fit')):
