@@ -22,6 +22,7 @@ def launch(app_class, argv=None):
         return 0
     enable_dpi_awareness()
     import tkinter as tk
+    from tkinter import ttk
     from tkinter import messagebox
     root=None
     try:
@@ -29,6 +30,10 @@ def launch(app_class, argv=None):
         callback_errors=[]
         if args.smoke_test:
             root.report_callback_exception=lambda kind,value,tb:callback_errors.append(str(value))
+        root._githug_smoke=bool(args.smoke_test)
+        if args.smoke_test:
+            smoke_config=tempfile.TemporaryDirectory(prefix='GitHug-smoke-settings-')
+            root._githug_smoke_dir=smoke_config.name
         app=app_class(root)
         if args.smoke_test:
             from .core import git
@@ -63,6 +68,21 @@ def launch(app_class, argv=None):
                 report['history_search_clears']=len(app.history.get_children())==4
                 app.folder_browser.set_folder(str(directory/'copy'))
                 app.toggle_explanation()
+                display_settings=app.settings_dialog()
+                root.update_idletasks()
+                report['display_settings_opened']=bool(display_settings.winfo_exists())
+                def descendants(widget):
+                    return [child for c in widget.winfo_children() for child in [c]+descendants(c)]
+                checks=[w for w in descendants(display_settings) if isinstance(w,ttk.Checkbutton)]
+                for w in checks:w.invoke()
+                next(w for w in descendants(display_settings) if isinstance(w,ttk.Button) and w.cget('text')=='適用').invoke()
+                saved=json.loads(app.config_path.read_text(encoding='utf-8'))
+                report['guidance_preferences_saved']=not saved['hover_help'] and not saved['selection_guide'] and not app.tooltips.enabled
+                display_settings=app.settings_dialog()
+                checks=[w for w in descendants(display_settings) if isinstance(w,ttk.Checkbutton)]
+                for w in checks:w.invoke()
+                next(w for w in descendants(display_settings) if isinstance(w,ttk.Button) and w.cget('text')=='適用').invoke()
+                report['guidance_preferences_restored']=app.tooltips.enabled
                 settings=app.explanation.settings_dialog()
                 root.update_idletasks()
                 report['settings_dialog_opened']=settings.winfo_exists()
@@ -78,6 +98,19 @@ def launch(app_class, argv=None):
                 root.after(1400,root.quit)
                 root.mainloop()
                 root.update_idletasks()
+                root.update()
+                app.tooltips.owner=app.history_header.entry
+                app.tooltips.duration=40
+                app.tooltips.show(app.history_header.entry,'検索欄の説明')
+                report['hover_help_visible']=bool(app.tooltips.tip)
+                root.after(100,root.quit);root.mainloop()
+                report['hover_help_expires']=app.tooltips.tip is None
+                app.tooltips.duration=4500
+                app.tooltips.owner=app.history_header.entry
+                app.tooltips.show(app.history_header.entry,'検索欄の説明')
+                app.tooltips.set_enabled(False)
+                report['hover_help_disabled']=app.tooltips.tip is None
+                app.tooltips.set_enabled(True)
                 report['graph_items']=len(app.history.graph_view.canvas.find_all())
                 report['history_rows']=len(app.history.get_children())
                 report['folder_tree_loaded']=len(app.folder_browser.paths)>1
@@ -109,12 +142,17 @@ def launch(app_class, argv=None):
                 report['header_buttons_visible']=all(b.winfo_width()>15 and b.winfo_x()>=0 and b.winfo_x()+b.winfo_width()<=b.master.winfo_width() for b in buttons)
                 view_buttons=app.explanation.tabs.buttons
                 report['view_buttons_equal']=abs(view_buttons[0].winfo_width()-view_buttons[1].winfo_width())<=2
+                report['selection_guide_ready']=bool(app.action_guide.get())
+                report['key_not_in_config']=not any('key' in k.casefold() for k in app.config)
+                if not all(report[k] for k in ('display_settings_opened','guidance_preferences_saved','guidance_preferences_restored','hover_help_visible','hover_help_expires','hover_help_disabled','selection_guide_ready','key_not_in_config')):
+                    raise RuntimeError('操作ガイドの確認に失敗しました: '+str(report))
                 report['callback_errors']=callback_errors
                 if not report['header_buttons_visible'] or not report['view_buttons_equal'] or callback_errors or report['sidebar_width']<180 or report['panel_width']<250 or not report['folder_tree_loaded'] or not report['explanation_prepared']:
                     raise RuntimeError('追加パネルの確認に失敗しました: '+str(report))
             report['history_size']=app.history.winfo_geometry()
             Path(args.smoke_test).write_text(json.dumps(report,ensure_ascii=False,indent=2),encoding='utf-8')
             root.destroy()
+            smoke_config.cleanup()
             return 0
         root.mainloop()
         return 0

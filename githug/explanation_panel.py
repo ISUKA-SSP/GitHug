@@ -7,6 +7,7 @@ from .explaining import explain, normalize_api_key
 from .inspection import file_input,history_input
 from .view_switch import ViewSwitch
 from .reading import write_explanation
+from .credentials import CredentialStore, CredentialError
 
 
 class ExplanationPanel:
@@ -22,13 +23,24 @@ class ExplanationPanel:
         self.caption=tk.StringVar(value='履歴か左下のファイルを選択')
         ttk.Label(self.frame,textvariable=self.caption,wraplength=300).pack(fill='x',pady=8)
         self.mode=tk.StringVar(value='一つの履歴')
-        ttk.Combobox(self.frame,textvariable=self.mode,values=('一つの履歴','分岐の変更'),state='readonly').pack(fill='x')
-        ttk.Label(self.frame,text='どこからの変更を説明する？',style='Muted.TLabel').pack(anchor='w',pady=(6,0))
-        self.base=tk.StringVar(value='main');ttk.Entry(self.frame,textvariable=self.base).pack(fill='x')
+        self.mode_picker=ttk.Combobox(self.frame,textvariable=self.mode,values=('一つの履歴','分岐の変更'),state='readonly')
+        self.mode_picker.pack(fill='x')
+        self.base_area=ttk.Frame(self.frame)
+        ttk.Label(self.base_area,text='どこからの変更を説明する？',style='Muted.TLabel').pack(anchor='w',pady=(6,0))
+        self.base=tk.StringVar(value='main')
+        self.base_picker=ttk.Combobox(self.base_area,textvariable=self.base,values=('main',))
+        self.base_picker.pack(fill='x')
+        self.tooltip(self.base_picker,'説明の出発点を選びます。例：mainから選んだ履歴までの変更。名前の入力もできます。')
         self.detail=tk.BooleanVar(value=False)
-        ttk.Checkbutton(self.frame,text='内容・差分の本文も含める',variable=self.detail).pack(anchor='w',pady=4)
+        self.detail_checkbox=ttk.Checkbutton(self.frame,text='内容・差分の本文も含める',variable=self.detail)
+        self.detail_checkbox.pack(anchor='w',pady=4)
         self.model=tk.StringVar(value=app.config.get('explanation_model',''))
         self.key=tk.StringVar()
+        self.key_store=CredentialStore('GitHug/Smoke/unused' if getattr(app.window,'_githug_smoke',False) else 'GitHug/Gemini/APIKey')
+        self.key_store_error=''
+        try:self.key.set(self.key_store.read())
+        except CredentialError as exc:self.key_store_error=str(exc)
+        self.key_saved=bool(self.key.get())
         settings_button=ttk.Button(top,text='⚙',width=3,command=self.settings_dialog,style='Icon.TButton')
         settings_button.grid(row=0,column=1,sticky='e',padx=(4,4))
         self.tooltip(settings_button,'Geminiの接続設定')
@@ -44,44 +56,49 @@ class ExplanationPanel:
         for variable in (self.mode,self.base,self.detail):variable.trace_add('write',self.invalidate)
         self.frame.after(80,self.poll)
 
-    @staticmethod
-    def tooltip(widget,label):
-        state={'tip':None,'after':None}
-        def hide(event=None):
-            if state['after'] is not None:widget.after_cancel(state['after']);state['after']=None
-            if state['tip'] is not None:state['tip'].destroy();state['tip']=None
-        def show():
-            state['after']=None
-            if not widget.winfo_exists():return
-            tip=tk.Toplevel(widget);tip.overrideredirect(True)
-            tip.geometry('+'+str(widget.winfo_rootx())+'+'+str(widget.winfo_rooty()+widget.winfo_height()+4))
-            ttk.Label(tip,text=label,padding=6).pack();state['tip']=tip
-        widget.bind('<Enter>',lambda event:state.update(after=widget.after(500,show)))
-        widget.bind('<Leave>',hide);widget.bind('<ButtonPress>',hide,add='+')
+    def tooltip(self,widget,label):
+        self.app.tooltips.add(widget,label)
 
     def settings_dialog(self):
         existing=getattr(self,'settings_window',None)
         if existing is not None and existing.winfo_exists():existing.lift();return existing
         popup=tk.Toplevel(self.frame);self.settings_window=popup
-        popup.title('Gemini 接続設定');popup.geometry('620x360');popup.minsize(480,340)
+        popup.title('Gemini 接続設定');popup.geometry('650x490');popup.minsize(520,470)
         area=ttk.Frame(popup,padding=18);area.pack(fill='both',expand=True)
         ttk.Label(area,text='Geminiへの接続',style='Heading.TLabel').pack(anchor='w',pady=(0,12))
         ttk.Label(area,text='モデル名（Google AI Studioで利用できる名前）').pack(anchor='w')
         model=tk.StringVar(value=self.model.get());ttk.Entry(area,textvariable=model).pack(fill='x',pady=(4,12))
-        ttk.Label(area,text='APIキー（このアプリを閉じるまでだけ保持）').pack(anchor='w')
+        ttk.Label(area,text='APIキー').pack(anchor='w')
         key=tk.StringVar(value=self.key.get());entry=ttk.Entry(area,textvariable=key,show='•');entry.pack(fill='x',pady=4)
-        ttk.Label(area,text='モデル名だけ設定ファイルに保存します。キーは保存しません。\n設定を適用しても通信しません。送信前に内容を確認してください。',style='Muted.TLabel',wraplength=540).pack(anchor='w',pady=8)
-        status=tk.StringVar();ttk.Label(area,textvariable=status,wraplength=540).pack(fill='x')
+        remember=tk.BooleanVar(value=self.key_saved)
+        checkbox=ttk.Checkbutton(area,text='このPCにAPIキーを保存する',variable=remember)
+        checkbox.pack(anchor='w',pady=(8,4))
+        if not self.key_store.available:checkbox.configure(state='disabled')
+        ttk.Label(area,text='保存先はWindowsの資格情報マネージャーです。\n保存しない場合は、このアプリを閉じるまでだけ保持します。\nチェックを外して適用すると、保存済みキーを削除します。\n設定を適用しても通信しません。',style='Muted.TLabel',wraplength=540).pack(anchor='w',pady=8)
+        status=tk.StringVar(value=self.key_store_error or ('APIキーはこのPCに保存されています。' if self.key_saved else 'APIキーは保存されていません。'));ttk.Label(area,textvariable=status,wraplength=540).pack(fill='x')
         buttons=ttk.Frame(area);buttons.pack(side='bottom',fill='x')
         def close():
             key.set('');popup.destroy()
         def apply():
             try:value=normalize_api_key(key.get()) if key.get().strip() else ''
             except ValueError as exc:status.set(str(exc));return
+            try:
+                if remember.get():
+                    if not value:status.set('保存するAPIキーを入力してください。');return
+                    self.key_store.write(value)
+                elif self.key_store.available:self.key_store.delete()
+            except CredentialError as exc:status.set(str(exc));return
+            self.key_saved=remember.get();self.key_store_error=''
             self.model.set(model.get().strip());self.key.set(value)
             self.app.config['explanation_model']=self.model.get();self.app.save()
             self.state.set('接続設定を適用しました。送信内容を確認して依頼してください。')
             close()
+        def forget():
+            try:self.key_store.delete()
+            except CredentialError as exc:status.set(str(exc));return
+            self.key_saved=False;self.key_store_error='';remember.set(False);key.set('');self.key.set('')
+            status.set('保存済みキーを削除しました。使用中のキーもクリアしました。')
+        ttk.Button(area,text='保存済みキーを削除',command=forget).pack(anchor='w',pady=4)
         ttk.Button(buttons,text='キャンセル',command=close).pack(side='right')
         ttk.Button(buttons,text='適用',command=apply,style='Primary.TButton').pack(side='right',padx=8)
         popup.protocol('WM_DELETE_WINDOW',close)
@@ -100,12 +117,27 @@ class ExplanationPanel:
 
     def choose(self,target):
         self.target=target
+        history=bool(target and target['kind']=='history')
+        self.mode_picker.configure(state='readonly' if history else 'disabled')
+        refs={'main'}
+        for record in getattr(self.app,'records',{}).values():
+            for ref in record.get('refs','').split(', '):
+                ref=ref.removeprefix('HEAD -> ').strip()
+                if ref and not ref.startswith('tag:'):refs.add(ref)
+        self.base_picker.configure(values=sorted(refs))
+        self.update_base_visibility()
         self.caption.set((target['label'][:100]+('…' if len(target['label'])>100 else '')) if target else '履歴か左下のファイルを選択')
         self.payload=None;self.send.configure(state='disabled')
         if not self.busy:
             self.write(self.preview,'');self.state.set('送信前に内容を確認してください。')
 
+    def update_base_visibility(self):
+        visible=self.target and self.target['kind']=='history' and self.mode.get()=='分岐の変更'
+        if visible:self.base_area.pack(fill='x',before=self.detail_checkbox)
+        else:self.base_area.pack_forget()
+
     def invalidate(self,*args):
+        self.update_base_visibility()
         self.payload=None;self.send.configure(state='disabled')
         if not self.busy:self.state.set('条件を変更しました。送信内容をもう一度確認してください。')
 
