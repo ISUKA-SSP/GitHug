@@ -34,7 +34,7 @@ def history_input(project,sha,base=None,detail=False):
     if base:
         base_sha=git('rev-parse','--verify','--end-of-options',base+'^{commit}',cwd=project.cache).strip()
         baseline=git('merge-base',base_sha,sha,cwd=project.cache).strip()
-        title='対象: 枝の変更\n比較元: '+base+' ('+base_sha+')\n共通の分岐元: '+baseline+'\n選択した先端: '+sha
+        title='対象: 分岐の変更\n比較元: '+base+' ('+base_sha+')\n共通の分岐元: '+baseline+'\n選択した先端: '+sha
     else:
         parents=git('show','-s','--format=%P',sha,cwd=project.cache).split()
         baseline=parents[0] if parents else git('hash-object','-t','tree','--stdin',input_text='',cwd=project.cache).strip()

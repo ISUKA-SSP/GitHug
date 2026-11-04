@@ -42,7 +42,7 @@ def checked_folder(project, folder):
     # A junction/symlink in any component can redirect the replacement target.
     for part in (path, *path.parents):
         if part.is_symlink() or getattr(part.lstat(), 'st_file_attributes', 0) & 0x400:
-            raise UpdateConflict('リンク先のフォルダーは更新できません。別フォルダーへの再現を使ってください。')
+            raise UpdateConflict('リンク先のフォルダーは更新できません。別フォルダーへのコピーを使ってください。')
     path = path.resolve(strict=True)
     if not path.is_dir():
         raise UpdateConflict('更新先がフォルダーではありません。')
@@ -70,7 +70,7 @@ def inventory(folder, progress=None):
             if progress:
                 progress('変更を確認: ' + relative)
             if stat.S_ISLNK(info.st_mode) or getattr(info, 'st_file_attributes', 0) & 0x400:
-                raise UpdateConflict('リンクを含むため入れ替えできません: ' + relative + '\n別フォルダーへの再現を使ってください。')
+                raise UpdateConflict('リンクを含むため入れ替えできません: ' + relative + '\n別フォルダーへのコピーを使ってください。')
             if stat.S_ISDIR(info.st_mode):
                 result.append((relative, 'directory', info.st_mtime_ns))
             elif stat.S_ISREG(info.st_mode):
@@ -115,9 +115,9 @@ class UpdatePlan:
 def require_update_permission(project, folder, baseline):
     _, record = record_for_folder(project, folder)
     if not record or record.get('sha') != baseline:
-        raise UpdateNotAllowed('この作業用フォルダーは同じ場所への更新が無効です。作成元を確認し、右クリックから更新を有効にするか、別フォルダーへ再現してください。')
+        raise UpdateNotAllowed('この作業用フォルダーは同じ場所への更新が無効です。作成元を確認し、右クリックから更新を有効にするか、別フォルダーへコピーしてください。')
     if record.get('kind', 'snapshot') != 'snapshot' and not record.get('update_allowed', False):
-        raise UpdateNotAllowed('この作業用フォルダーは同じ場所への更新が無効です。右クリックから明示的に有効にするか、別フォルダーへ再現してください。')
+        raise UpdateNotAllowed('この作業用フォルダーは同じ場所への更新が無効です。右クリックから明示的に有効にするか、別フォルダーへコピーしてください。')
 
 
 def authorize_update(project, plan):
@@ -220,7 +220,7 @@ def inspect_update(project, folder, sha, progress=None, *, for_authorization=Fal
         except GitError:
             pass
     if not baseline:
-        raise UpdateNotAllowed('このフォルダーの作成元の版が分からないため、同じ場所への更新は行いません。新しいフォルダーへ再現してください。')
+        raise UpdateNotAllowed('このフォルダーの作成元の版が分からないため、同じ場所への更新は行いません。新しいフォルダーへコピーしてください。')
     if not for_authorization:
         require_update_permission(project, target, baseline)
     fingerprint = inventory(target, progress)
@@ -247,7 +247,7 @@ def inspect_update(project, folder, sha, progress=None, *, for_authorization=Fal
         if (target / '.git').is_dir():
             try:
                 if git('rev-parse', 'HEAD', cwd=target).strip() != baseline:
-                    differences.append(('手元の履歴が変更されています', '.git'))
+                    differences.append(('手もとにした履歴が変更されています', '.git'))
                 refs = git('for-each-ref', '--format=%(refname) %(objectname)', 'refs/heads', 'refs/stash', cwd=target)
                 for line in refs.splitlines():
                     ref, commit = line.split(' ', 1)
@@ -261,7 +261,7 @@ def inspect_update(project, folder, sha, progress=None, *, for_authorization=Fal
                 differences.append(('Git管理情報の状態を確認できません', '.git'))
     else:
         unknown = True
-        differences = [('元の履歴が不明（変更の有無を判定できません）', '')]
+        differences = [('もとにした履歴が不明（変更の有無を判定できません）', '')]
     if inventory(target, progress) != fingerprint:
         raise UpdateConflict('確認中にフォルダーの内容が変更されました。処理中のアプリを閉じてやり直してください。')
     files, directories, collisions = local_additions(project, baseline, sha, fingerprint)
@@ -292,10 +292,10 @@ def apply_update(project, plan, keep_backup=True, progress=None, preserve_local_
     if target != plan.folder or inventory(target, progress) != plan.fingerprint:
         raise UpdateConflict('確認後にフォルダーの内容が変わりました。変更は行いませんでした。もう一度確認してください。')
     if preserve_local_only and plan.unknown:
-        raise UpdateConflict('元の履歴が不明なため、手元だけのファイルを判別できません。別フォルダーへの再現、または保管付きの完全な入れ替えを選んでください。')
+        raise UpdateConflict('もとにした履歴が不明なため、手元だけのファイルを判別できません。別フォルダーへのコピー、または保管付きの完全な入れ替えを選んでください。')
     if preserve_local_only and plan.collisions:
         raise UpdateConflict('手元だけのファイルと選んだ版が衝突しています。更新は行いませんでした。\n' +
-                             '\n'.join(plan.collisions[:20]) + '\n別フォルダーへの再現か、ファイルの移動後に再度更新してください。')
+                             '\n'.join(plan.collisions[:20]) + '\n別フォルダーへのコピーか、ファイルの移動後に再度更新してください。')
     token = uuid4().hex
     staged = target.parent / ('.githug-staged-' + token)
     previous = target.parent / ('.githug-previous-' + token)

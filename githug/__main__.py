@@ -21,6 +21,7 @@ from .push_ui import PushUI
 from .history_graph import HistoryGraph, history_page
 from .graph_view import GraphView
 from .folder_tree import FolderTree
+from .search_header import SearchHeader
 from .splitter import SidebarSplitter
 from .explanation_panel import ExplanationPanel
 from .drag_hint import DragHint
@@ -73,10 +74,10 @@ class App:
         ttk.Label(appbar, textvariable=self.operation_state, style='AppbarMuted.TLabel').pack(side='right')
         toolbar = ttk.Frame(window, padding=(14,10), style='Card.TFrame')
         toolbar.pack(fill='x', padx=16, pady=(0,12))
-        ttk.Button(toolbar, text='更新を確認', command=self.refresh, style='Primary.TButton').pack(side='left', padx=4)
+        ttk.Button(toolbar, text='GitHubの履歴を更新', command=self.refresh, style='Primary.TButton').pack(side='left', padx=4)
         ttk.Button(toolbar, text='＋ プロジェクト', command=self.add).pack(side='left', padx=4)
-        ttk.Button(toolbar, text='保管した内容', command=self.backups_dialog).pack(side='left', padx=4)
-        ttk.Button(toolbar, text='保存先', command=self.choose_root, style='Quiet.TButton').pack(side='right', padx=4)
+        ttk.Button(toolbar, text='更新前のバックアップ', command=self.backups_dialog).pack(side='left', padx=4)
+        ttk.Button(toolbar, text='コピー・履歴の保存先', command=self.choose_root, style='Quiet.TButton').pack(side='right', padx=4)
         self.status = tk.StringVar(value='「＋ プロジェクト」からGitHubのURLを追加して始めましょう。')
         footer=ttk.Frame(window,padding=(12,7),style='Card.TFrame')
         footer.pack(fill='x',side='bottom',padx=16,pady=(8,12))
@@ -104,14 +105,12 @@ class App:
         self.sections.pack(fill='both', expand=True)
         history_tab = ttk.Frame(self.sections, padding=12, style='Card.TFrame')
         history_tab.columnconfigure(0, weight=1)
-        history_tab.rowconfigure(4, weight=1, minsize=70)
+        history_tab.rowconfigure(2, weight=1, minsize=70)
         self.sections.add(history_tab, weight=3)
-        history_header = ttk.Frame(history_tab)
-        history_header.grid(row=0, column=0, sticky='ew', pady=(0, 4))
-        ttk.Label(history_header, text='GitHubの履歴', style='Heading.TLabel').pack(side='left')
-        ttk.Label(history_header, text='↓ PCへ再現　↑ GitHubへ送信', style='Muted.TLabel').pack(side='left', padx=12)
-        self.history_query, self.history_count = self.search_bar(history_tab, '履歴を検索', grid_row=2)
-        self.history = self.table(history_tab, ('date', 'refs', 'message', 'memo'), ('更新日時', '作業の枝・目印', '変更の説明', '自分用メモ'), tree=True, grid_row=4, graph=True)
+        self.history_header = SearchHeader(history_tab, 'GitHubの履歴')
+        self.history_header.grid(row=0,column=0,sticky='ew',pady=(0,6))
+        self.history_query,self.history_count = self.history_header.query,self.history_header.count
+        self.history = self.table(history_tab, ('date', 'refs', 'message', 'memo'), ('更新日時', '作業の分岐・目印', '変更の説明', '自分用メモ'), tree=True, grid_row=2, graph=True)
         self.history.bind('<<TreeviewSelect>>', self.detail)
         self.history.bind('<Button-3>', self.menu)
         self.history.bind('<ButtonPress-1>', self.history_press, add='+')
@@ -122,19 +121,19 @@ class App:
             self.history.graph_view.canvas.bind(event, handler)
         self.history_pager(history_tab)
         self.selection = tk.StringVar(value='')
-        ttk.Label(history_tab, textvariable=self.selection, wraplength=850, style='Muted.TLabel').grid(row=5, column=0, sticky='ew', pady=4)
+        ttk.Label(history_tab, textvariable=self.selection, wraplength=850, style='Muted.TLabel').grid(row=3, column=0, sticky='ew', pady=4)
         controls = ttk.Frame(history_tab)
-        controls.grid(row=6, column=0, sticky='ew')
-        ttk.Button(controls, text='この時点を新しいフォルダーに再現', command=self.reproduce, style='Primary.TButton').pack(side='left', padx=4)
+        controls.grid(row=4, column=0, sticky='ew')
+        ttk.Button(controls, text='この時点のファイルをPCへコピー', command=self.reproduce, style='Primary.TButton').pack(side='left', padx=4)
         ttk.Button(controls, text='作業フォルダーと比較', command=self.compare).pack(side='left', padx=4)
         folders = ttk.Frame(self.sections, padding=12, style='Card.TFrame')
         folders.columnconfigure(0, weight=1)
-        folders.rowconfigure(3, weight=1, minsize=70)
+        folders.rowconfigure(1, weight=1, minsize=70)
         self.sections.add(folders, weight=2)
-        ttk.Label(folders, text='PCのフォルダー', style='Heading.TLabel').grid(row=0, column=0, sticky='w')
-        ttk.Label(folders, text='選ぶと左下に中身を表示します。', style='Muted.TLabel').grid(row=1, column=0, sticky='w', pady=4)
-        self.folder_query, self.folder_count = self.search_bar(folders, 'フォルダーを検索', grid_row=2)
-        self.folders = self.table(folders, ('kind', 'path', 'sha', 'created', 'state', 'memo'), ('種類', '保存場所', '元の履歴', '再現した日時', '状態', '自分用メモ'), grid_row=3)
+        self.folder_header = SearchHeader(folders, 'PCのフォルダー')
+        self.folder_header.grid(row=0,column=0,sticky='ew',pady=(0,6))
+        self.folder_query,self.folder_count = self.folder_header.query,self.folder_header.count
+        self.folders = self.table(folders, ('kind', 'path', 'sha', 'created', 'state', 'memo'), ('種類', '保存場所', 'もとにした履歴', 'コピーした日時', '状態', '自分用メモ'), grid_row=1)
         self.folders.configure(displaycolumns=('sha', 'created', 'state', 'path', 'memo'))
         self.folders.bind('<Button-3>', self.folder_menu)
         self.folders.bind('<ButtonPress-1>', self.folder_press, add='+')
@@ -143,11 +142,11 @@ class App:
         self.window.bind('<FocusIn>', self.on_window_focus, add='+')
         self.window.bind('<Escape>', self.cancel_drag, add='+')
         folder_controls = ttk.Frame(folders)
-        folder_controls.grid(row=4, column=0, sticky='ew', pady=(6, 0))
+        folder_controls.grid(row=2, column=0, sticky='ew', pady=(6, 0))
         ttk.Button(folder_controls, text='作業フォルダーを登録', command=self.register_folder).pack(side='left', padx=4)
         ttk.Button(folder_controls, text='フォルダーを開く', command=self.open_folder).pack(side='left', padx=4)
         ttk.Button(folder_controls, text='PowerShell／コマンド', command=self.command_dialog).pack(side='left', padx=4)
-        ttk.Button(folder_controls, text='一覧を更新', command=self.check_folder_tab).pack(side='left', padx=4)
+        ttk.Button(folder_controls, text='一覧を再表示', command=self.check_folder_tab).pack(side='left', padx=4)
         self.explanation = ExplanationPanel(split, self)
         self.explanation_visible = False
         ttk.Button(toolbar, text='説明パネル', command=self.toggle_explanation).pack(side='right', padx=4)
@@ -189,30 +188,16 @@ class App:
         ttk.Label(popup,text='GitHug  '+__version__,style='Heading.TLabel',padding=16).pack(anchor='w')
         text=(
             '1  プロジェクトを追加：GitHubのURLを登録します。\n'
-            '2  履歴からPCへドラッグ：別フォルダーへの再現や、確認付きの更新。\n'
+            '2  履歴からPCへドラッグ：別フォルダーへのコピーや、確認付きの更新。\n'
             '3  PCから履歴へドラッグ：ファイルを確認してGitHubへ送信。\n\n'
             '検索は全履歴と自分用メモが対象です。選んだ履歴をグラフで見る操作で、その流れへ戻れます。\n'
             '自分用メモ・VS Code・PowerShellは、行の右クリックから開けます。\n'
-            '同じ場所への更新は、GitHugの再現フォルダーか、明示的に有効にした作業用だけです。\n\n'
+            '同じ場所への更新は、GitHugのコピーフォルダーか、明示的に有効にした作業用だけです。\n\n'
             '公開プロジェクトの取得にはログイン不要です。送信・非公開プロジェクトにはPC側のGitHub認証が必要です。\n'
             'Geminiは任意。説明を頼むボタンを押すまで呼び出しません。\n\n'
             '使用するGit：'+git_executable()+'\n設定：'+str(self.config_path))
         ttk.Label(popup,text=text,wraplength=700,padding=(16,0),justify='left').pack(fill='both',expand=True)
         ttk.Button(popup,text='閉じる',command=popup.destroy).pack(anchor='e',padx=16,pady=16)
-
-    def search_bar(self, parent, description, grid_row=None):
-        frame = ttk.Frame(parent)
-        if grid_row is None:
-            frame.pack(fill='x', pady=(0, 8))
-        else:
-            frame.grid(row=grid_row, column=0, sticky='ew', pady=(0, 8))
-        ttk.Label(frame, text=description).pack(anchor='w')
-        query = tk.StringVar()
-        count = tk.StringVar()
-        ttk.Entry(frame, textvariable=query).pack(side='left', fill='x', expand=True)
-        ttk.Button(frame, text='クリア', command=lambda: query.set('')).pack(side='left', padx=6)
-        ttk.Label(frame, textvariable=count).pack(side='right')
-        return query, count
 
     def configure_sort(self, name, table, columns):
         table.sort_labels = {col: table.heading(col, 'text') for col in columns}
@@ -243,7 +228,7 @@ class App:
 
     def history_pager(self, parent):
         bar = ttk.Frame(parent)
-        bar.grid(row=3, column=0, sticky='ew', pady=(0, 6))
+        bar.grid(row=1, column=0, sticky='ew', pady=(0, 6))
         self.page_number = tk.StringVar(value='0')
         self.page_total = tk.StringVar(value='/ 0 ページ')
         self.page_size_text = tk.StringVar(value=str(self.history_page_size))
@@ -517,7 +502,7 @@ class App:
         if not item: return
         self.history.selection_set(item)
         menu = tk.Menu(self.window, tearoff=False)
-        menu.add_command(label='この時点を新しいフォルダーに再現', command=self.reproduce)
+        menu.add_command(label='この時点のファイルをPCへコピー', command=self.reproduce)
         menu.add_command(label='作業フォルダーと比較', command=self.compare)
         menu.add_command(label='自分用メモを編集', command=self.edit_history_note)
         menu.add_command(label='選んだフォルダーをこの版に更新', command=self.update_selected)
@@ -607,7 +592,7 @@ class App:
             return
         sha = next(iter(self.records), None)
         if not sha:
-            messagebox.showinfo('履歴を取得', '先に「更新を確認」で履歴を取得してください。')
+            messagebox.showinfo('履歴を取得', '先に「GitHubの履歴を更新」で履歴を取得してください。')
             return
         project = self.project
         def done(plan):
@@ -710,12 +695,12 @@ class App:
                 elif y > self.folders.winfo_height() - 25: self.folders.yview_scroll(1, 'units')
                 self.drag_scroll_at = now
             valid = self.folders.identify_region(event.x_root - self.folders.winfo_rootx(), y) not in ('heading', 'separator')
-            self.drag_hint.show(event.x_root, event.y_root, ('このフォルダーを更新' if item else '新しく再現') if valid else 'ここには置けません',
+            self.drag_hint.show(event.x_root, event.y_root, ('このフォルダーを更新' if item else '新しくコピー') if valid else 'ここには置けません',
                                 '履歴 ' + drag['sha'][:12], allowed=valid, action='↻' if item else '+')
-            self.status.set('ここで離すと、このフォルダーへの更新を確認します。' if item else 'ここで離すと、新しい再現フォルダーを作ります。')
+            self.status.set('ここで離すと、このフォルダーへのGitHubの履歴を更新します。' if item else 'ここで離すと、新しいコピーフォルダーを作ります。')
         else:
             self.drag_hint.show(event.x_root, event.y_root, 'ここには置けません', '履歴 ' + drag['sha'][:12], allowed=False)
-            self.status.set('PCのフォルダーの行へドラッグで更新、一覧の空白へドラッグで新規再現。')
+            self.status.set('PCのフォルダーの行へドラッグで更新、一覧の空白へドラッグで新規コピー。')
 
     def history_release(self, event):
         drag = self.dragging
@@ -751,8 +736,8 @@ class App:
                     self.folders.selection_set(item)
                     self.folders.see(item)
                     break
-            messagebox.showinfo('再現しました', '新しいフォルダーに保存しました。\n' + folder)
-        self.run('新しいフォルダーへ再現しています…', lambda: project.snapshot(sha), done)
+            messagebox.showinfo('コピーしました', '新しいフォルダーに保存しました。\n' + folder)
+        self.run('新しいフォルダーへコピーしています…', lambda: project.snapshot(sha), done)
 
     def update_selected(self):
         history = self.history.selection()
@@ -767,7 +752,7 @@ class App:
         folder = self.folders.item(item, 'values')[1]
         if not Path(folder).is_dir():
             if messagebox.askyesno('フォルダーが見つかりません',
-                    '更新先が削除、または移動されています。\n選んだ履歴から別フォルダーへ新しく再現しますか？\n' + folder):
+                    '更新先が削除、または移動されています。\n選んだ履歴から別フォルダーへ新しくコピーしますか？\n' + folder):
                 self.reproduce_sha(sha)
             return
         project = self.project
@@ -777,7 +762,7 @@ class App:
             except UpdateNotAllowed as exc: return str(exc)
         def done(plan):
             if isinstance(plan, str):
-                if messagebox.askyesno('この場所は入れ替えません', plan + '\n\n選んだ版を別の新しいフォルダーへ再現しますか？'):
+                if messagebox.askyesno('この場所は入れ替えません', plan + '\n\n選んだ版を別の新しいフォルダーへコピーしますか？'):
                     self.reproduce_sha(sha)
                 return
             self.update_dialog(project, plan)
@@ -793,8 +778,8 @@ class App:
         popup.rowconfigure(3, weight=1)
         ttk.Label(popup, text='更新先: ' + str(plan.folder), wraplength=640, padding=12).grid(row=0, column=0, sticky='ew')
         ttk.Label(popup, text='選んだ履歴: ' + plan.sha[:12] + '\n' +
-                  ('元の履歴が不明です。現在の内容を保管してからの更新をおすすめします。' if plan.unknown else
-                   f'手元の変更・追加など: {len(plan.differences)} 件（元の履歴 {plan.baseline[:8]} との比較）'),
+                  ('もとにした履歴が不明です。現在の内容を保管してからの更新をおすすめします。' if plan.unknown else
+                   f'手元の変更・追加など: {len(plan.differences)} 件（もとにした履歴 {plan.baseline[:8]} との比較）'),
                   padding=(12, 0), wraplength=640).grid(row=1, column=0, sticky='ew')
         ttk.Label(popup, text='元の版にあるファイルは選んだ版へ更新し、そのファイルへの手元の編集は引き継ぎません。\n'
                   '手元だけの追加ファイルは下の選択で残せます。Git管理情報は入れ替えます。関連アプリを閉じてください。',
@@ -810,13 +795,13 @@ class App:
         checkbox.pack(anchor='w')
         if plan.unknown:
             checkbox.configure(state='disabled')
-            text = '元の履歴が不明なため、手元だけのファイルを判別できません。別フォルダーへの再現か、保管しての入れ替えを選んでください。'
+            text = 'もとにした履歴が不明なため、手元だけのファイルを判別できません。別フォルダーへのコピーか、保管しての入れ替えを選んでください。'
         elif plan.collisions:
             text = f'選んだ版との衝突が {len(plan.collisions)} 件あります。残す設定のままでは更新せずに案内します。'
         else:
             text = '残す対象には無視対象の設定・DB・実行環境も含みます。元の版で管理されていたファイルは対象外です。'
         ttk.Label(options, text=text, wraplength=640, style='Muted.TLabel').pack(anchor='w', pady=4)
-        ttk.Label(options, text='「保管」は更新前の全体をZIPにまとめます。自分の編集を新しいコードへ混ぜる操作ではありません。',
+        ttk.Label(options, text='「バックアップ」は更新前の全体をZIPにまとめます。自分の編集を新しいコードへ混ぜる操作ではありません。',
                   wraplength=640, style='Muted.TLabel').pack(anchor='w')
         buttons = ttk.Frame(popup, padding=12)
         buttons.grid(row=5, column=0, sticky='ew')
@@ -828,13 +813,13 @@ class App:
                 messagebox.showinfo('手元のファイルと衝突しています',
                     '同じ場所に選んだ版のファイルがあるため、更新を止めています。\n' +
                     '\n'.join(plan.collisions[:20]) +
-                    '\n\n別フォルダーに再現するか、手元のファイルを別の場所に移してから確認し直してください。', parent=popup)
+                    '\n\n別フォルダーにコピーするか、手元のファイルを別の場所に移してから確認し直してください。', parent=popup)
                 return
             if not keep:
                 detail = ('手元だけのファイルは残しますが、元の版にあるファイルへの編集とGit管理情報は元に戻せません。'
                           if preserve else '手元の変更・追加ファイル・Git管理情報は元に戻せません。')
-                if not messagebox.askyesno('保管せずに更新しますか？',
-                        '現在の内容を保管せずに更新します。\n' + detail + '\n' + str(plan.folder), parent=popup):
+                if not messagebox.askyesno('バックアップせずに更新しますか？',
+                        '更新前の内容をバックアップせずに更新します。\n' + detail + '\n' + str(plan.folder), parent=popup):
                     return
             elif not preserve and not messagebox.askyesno('追加ファイルも入れ替えます',
                     '「手元だけのファイルを残す」がOFFです。\n追加ファイルも更新先から取り除きます（保管ZIPには残ります）。\n続けますか？', parent=popup):
@@ -853,9 +838,9 @@ class App:
         def separate():
             popup.destroy()
             self.reproduce_sha(plan.sha)
-        ttk.Button(buttons, text='今の内容を保管して更新', command=lambda: execute(True), style='Primary.TButton').grid(row=0, column=0, sticky='ew', padx=4, pady=4)
-        ttk.Button(buttons, text='手元の編集を破棄して更新（保管なし）', command=lambda: execute(False), style='Danger.TButton').grid(row=0, column=1, sticky='ew', padx=4, pady=4)
-        ttk.Button(buttons, text='別フォルダーに再現', command=separate).grid(row=1, column=0, sticky='ew', padx=4, pady=4)
+        ttk.Button(buttons, text='バックアップして更新', command=lambda: execute(True), style='Primary.TButton').grid(row=0, column=0, sticky='ew', padx=4, pady=4)
+        ttk.Button(buttons, text='編集内容を取り消して更新（バックアップなし）', command=lambda: execute(False), style='Danger.TButton').grid(row=0, column=1, sticky='ew', padx=4, pady=4)
+        ttk.Button(buttons, text='別フォルダーにコピー', command=separate).grid(row=1, column=0, sticky='ew', padx=4, pady=4)
         ttk.Button(buttons, text='キャンセル', command=popup.destroy).grid(row=1, column=1, sticky='ew', padx=4, pady=4)
         popup.grab_set()
 
@@ -864,7 +849,7 @@ class App:
         project = self.project
         directory = project.base / 'backups'
         popup = tk.Toplevel(self.window)
-        popup.title('保管した内容 — ' + project.name)
+        popup.title('更新前のバックアップ — ' + project.name)
         popup.geometry('950x550')
         ttk.Label(popup, text='更新前の内容をZIPで保管しています。復元するときはZIPを別の場所へ展開してください。', padding=12).pack(anchor='w')
         controls = ttk.Frame(popup, padding=12)
@@ -893,7 +878,7 @@ class App:
         def delete():
             path = chosen()
             if not path: return
-            if not messagebox.askyesno('保管した内容を削除', 'このZIPを削除しますか？\n更新前の手元の変更は、このZIPから復元できなくなります。\n' + str(path), parent=popup): return
+            if not messagebox.askyesno('更新前のバックアップを削除', 'このZIPを削除しますか？\n更新前の手元の変更は、このZIPから復元できなくなります。\n' + str(path), parent=popup): return
             try:
                 path.unlink()
                 path.with_suffix('.json').unlink(missing_ok=True)
@@ -901,8 +886,8 @@ class App:
                 messagebox.showinfo('削除できませんでした', str(exc), parent=popup)
             reload()
         ttk.Button(controls, text='ZIPを開く', command=open_archive).pack(side='left', padx=4)
-        ttk.Button(controls, text='選んだ保管内容を削除', command=delete).pack(side='left', padx=4)
-        ttk.Button(controls, text='一覧を更新', command=reload).pack(side='left', padx=4)
+        ttk.Button(controls, text='選んだバックアップを削除', command=delete).pack(side='left', padx=4)
+        ttk.Button(controls, text='一覧を再表示', command=reload).pack(side='left', padx=4)
         reload()
 
     def reproduce(self):
@@ -937,7 +922,7 @@ class App:
             state = self.folder_state(folder)
             if kind == '作業用（登録）' and state == '利用できます':
                 _, version = record_for_folder(self.project, folder)
-                state += '（更新有効）' if version and version.get('update_allowed') else '（更新無効）'
+                state += '（上書き更新はON）' if version and version.get('update_allowed') else '（上書き更新はOFF）'
             date, timestamp = date_value(created)
             self.folder_rows.append({
                 'id': item, 'pinned': kind == '作業用（登録）', 'values': (kind, folder, sha[:8], date, state, short_note(memo)),
@@ -950,7 +935,7 @@ class App:
             add('work:' + str(index), '作業用（登録）', folder, record.get('sha', ''), record.get('created', ''))
         for record in self.project.snapshots():
             item = 'snapshot:' + record['folder']
-            add(item, '再現したフォルダー', record['folder'], record['sha'], record.get('created', ''))
+            add(item, 'コピーしたフォルダー', record['folder'], record['sha'], record.get('created', ''))
             self.folder_records[item] = record
         self.render_folders()
 
@@ -966,7 +951,7 @@ class App:
         display_state = state
         if state == '利用できます' and self.folders.item(item, 'values')[0] == '作業用（登録）':
             _, version = record_for_folder(self.project, folder)
-            display_state += '（更新有効）' if version and version.get('update_allowed') else '（更新無効）'
+            display_state += '（上書き更新はON）' if version and version.get('update_allowed') else '（上書き更新はOFF）'
         self.folders.set(item, 'state', display_state)
         if state == '利用できます':
             action(folder)
@@ -978,13 +963,13 @@ class App:
         if not record:
             messagebox.showinfo('作業場所が見つかりません',
                                 'フォルダーが削除、または移動されています。\n' + folder +
-                                '\n\n登録した作業用フォルダーは自動で再作成しません。移動先を登録するか、上の履歴から新しく再現してください。')
+                                '\n\n登録した作業用フォルダーは自動で再作成しません。移動先を登録するか、上の履歴から新しくコピーしてください。')
             return
         project, sha = self.project, record['sha']
-        if not messagebox.askyesno('再現フォルダーが見つかりません',
+        if not messagebox.askyesno('コピーフォルダーが見つかりません',
                 'フォルダーが削除、または移動されています。\n' + folder +
-                '\n\n同じ履歴（' + sha[:8] + '）から、新しいフォルダーに再現しますか？' +
-                '\n再現後に手元で加えた変更は復元されません。'):
+                '\n\n同じ履歴（' + sha[:8] + '）から、新しいフォルダーにコピーしますか？' +
+                '\nコピー後に手元で加えた変更は復元されません。'):
             return
         def done(new_folder):
             self.folder_query.set('')
@@ -994,10 +979,10 @@ class App:
                     self.folders.selection_set(new_item)
                     self.folders.see(new_item)
                     break
-            self.status.set('同じ履歴から新しく再現しました: ' + new_folder)
-            messagebox.showinfo('再現しました', '新しいフォルダーを作成しました。\n' + new_folder)
+            self.status.set('同じ履歴から新しくコピーしました: ' + new_folder)
+            messagebox.showinfo('コピーしました', '新しいフォルダーを作成しました。\n' + new_folder)
             action(new_folder)
-        self.run('同じ履歴から新しいフォルダーへ再現しています…', lambda: project.snapshot(sha), done)
+        self.run('同じ履歴から新しいフォルダーへコピーしています…', lambda: project.snapshot(sha), done)
 
     def register_folder(self):
         if self.busy or not self.project: return

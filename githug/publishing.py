@@ -128,7 +128,7 @@ def inspect_push(project, folder, fallback_base=None, progress=None):
         raise ValueError('GitHugの管理用データを含む場所は送信元にできません。コードのフォルダーを選んでください。')
     base = local_base(project, source) or fallback_base
     if not base or not re.fullmatch(r'[0-9a-f]{40,64}', base):
-        raise ValueError('元の履歴が分かりません。上で比較基準の履歴を選んでから送信してください。')
+        raise ValueError('もとにした履歴が分かりません。上で比較基準の履歴を選んでから送信してください。')
     paths = tracked(project, base)
     fingerprints = {path: digest(safe_path(source, path)) for path in paths}
     project.base.mkdir(parents=True, exist_ok=True)
@@ -232,7 +232,7 @@ def remote_head(project, branch):
 
 def publish(project, plan, paths, branch, is_new, message, author_name, author_email, progress=None):
     branch, message = branch.strip(), message.strip()
-    if not branch or branch.startswith('-'): raise ValueError('枝の名前を入力してください。')
+    if not branch or branch.startswith('-'): raise ValueError('分岐の名前を入力してください。')
     git('check-ref-format', '--branch', branch)
     if not message: raise ValueError('変更の説明を入力してください。')
     if not author_name.strip() or not author_email.strip() or '\n' in author_name + author_email or '\r' in author_name + author_email:
@@ -245,7 +245,7 @@ def publish(project, plan, paths, branch, is_new, message, author_name, author_e
     else:
         expected = plan.branches.get(branch)
         if not expected or tip != expected or expected != plan.base:
-            raise RemoteChanged('GitHub側に別の更新があります。自分の変更は新しい枝として送ってください。変更を合わせる機能は今後追加予定です。')
+            raise RemoteChanged('GitHub側に別の更新があります。自分の変更は新しい分岐として送ってください。変更を合わせる機能は今後追加予定です。')
     outbox = project.base / 'outbox' / (datetime.now().strftime('%Y%m%d_%H%M%S') + '_' + uuid4().hex[:8])
     outbox.mkdir(parents=True)
     folder = outbox / 'repo'
@@ -287,7 +287,7 @@ def publish(project, plan, paths, branch, is_new, message, author_name, author_e
             record = {'folder': str(plan.folder), 'sha': plan.base, 'kind': 'work'}
         atomic_json(path, {**record, 'last_sent_sha': commit, 'last_sent_branch': branch})
     except Exception:
-        warning = '送信は成功しましたが、一覧または送信元の記録を更新できませんでした。「更新を確認」で取り直してください。'
+        warning = '送信は成功しましたが、一覧または送信元の記録を更新できませんでした。「GitHubの履歴を更新」で取り直してください。'
     # Retain a compact receipt; full failed drafts remain available for inspection.
     try: remove_temporary(folder)
     except OSError: pass

@@ -22,8 +22,8 @@ class ExplanationPanel:
         self.caption=tk.StringVar(value='履歴か左下のファイルを選択')
         ttk.Label(self.frame,textvariable=self.caption,wraplength=300).pack(fill='x',pady=8)
         self.mode=tk.StringVar(value='一つの履歴')
-        ttk.Combobox(self.frame,textvariable=self.mode,values=('一つの履歴','枝の変更'),state='readonly').pack(fill='x')
-        ttk.Label(self.frame,text='枝の比較元（例: main）',style='Muted.TLabel').pack(anchor='w',pady=(6,0))
+        ttk.Combobox(self.frame,textvariable=self.mode,values=('一つの履歴','分岐の変更'),state='readonly').pack(fill='x')
+        ttk.Label(self.frame,text='どこからの変更を説明する？',style='Muted.TLabel').pack(anchor='w',pady=(6,0))
         self.base=tk.StringVar(value='main');ttk.Entry(self.frame,textvariable=self.base).pack(fill='x')
         self.detail=tk.BooleanVar(value=False)
         ttk.Checkbutton(self.frame,text='内容・差分の本文も含める',variable=self.detail).pack(anchor='w',pady=4)
@@ -120,12 +120,12 @@ class ExplanationPanel:
     def prepare_input(self):
         if not self.target:self.state.set('履歴かファイルを選択してください。');return
         target=dict(self.target);mode=self.mode.get();base=self.base.get().strip();detail=self.detail.get()
-        if target['kind']=='history' and mode=='枝の変更' and not base:
-            self.state.set('枝の比較元を入力してください。');return
+        if target['kind']=='history' and mode=='分岐の変更' and not base:
+            self.state.set('比べる作業の分岐名（例: main）を入力してください。');return
         self.prepared_target=target;self.prepared_options=(mode,base,detail);self.payload=None
         self.state.set('送信する内容を準備中…（まだ通信しません）')
         def build():
-            text=file_input(target['path'],detail) if target['kind']=='file' else history_input(target['project'],target['sha'],base if mode=='枝の変更' else None,detail)
+            text=file_input(target['path'],detail) if target['kind']=='file' else history_input(target['project'],target['sha'],base if mode=='分岐の変更' else None,detail)
             return text
         self.launch('prepare',build)
 

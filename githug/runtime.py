@@ -57,6 +57,10 @@ def launch(app_class, argv=None):
                          {'sha':ids[2],'parents':ids[3],'refs':'work/example','message':'別の枝の変更','date':'2026-11-02T09:00:00+09:00'},
                          {'sha':ids[3],'parents':'','refs':'','message':'最初の版','date':'2026-11-01T10:00:00+09:00'}]
                 app.show_history(records)
+                app.history_query.set('合流')
+                report['history_search_filters']=len(app.history.get_children())==1
+                app.history_header.clear()
+                report['history_search_clears']=len(app.history.get_children())==4
                 app.folder_browser.set_folder(str(directory/'copy'))
                 app.toggle_explanation()
                 settings=app.explanation.settings_dialog()
@@ -93,6 +97,9 @@ def launch(app_class, argv=None):
                                    env={**os.environ,'GITHUG_CAPTURE_PATH':str(capture),
                                         'GITHUG_CAPTURE_X':str(root.winfo_rootx()),'GITHUG_CAPTURE_Y':str(root.winfo_rooty()),
                                         'GITHUG_CAPTURE_W':str(root.winfo_width()),'GITHUG_CAPTURE_H':str(root.winfo_height())})
+                report['search_headers_fit']=all(h.entry.winfo_width()>=30 and h.clear_button.winfo_rootx()+h.clear_button.winfo_width()<=h.winfo_rootx()+h.winfo_width() for h in (app.history_header,app.folder_header))
+                if not all(report[k] for k in ('history_search_filters','history_search_clears','search_headers_fit')):
+                    raise RuntimeError('検索欄の確認に失敗しました: '+str(report))
                 report['sidebar_width']=app.projects.master.winfo_width()
                 report['panel_width']=app.explanation.frame.winfo_width()
                 buttons=app.explanation.header_buttons
