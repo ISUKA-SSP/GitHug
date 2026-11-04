@@ -143,6 +143,7 @@ class ExplanationPanel:
 
     def launch(self,kind,function):
         if self.busy:return
+        if hasattr(self.app,'mascot_view'):self.app.mascot_view.begin('explanation','think')
         self.busy=True;self.prepare.configure(state='disabled');self.send.configure(state='disabled')
         def work():
             try:self.pending.put((kind,function(),None))
@@ -175,7 +176,9 @@ class ExplanationPanel:
     def poll(self):
         if not self.frame.winfo_exists():return
         while not self.pending.empty():
-            kind,value,error=self.pending.get();self.busy=False;self.prepare.configure(state='normal')
+            kind,value,error=self.pending.get()
+            if hasattr(self.app,'mascot_view'):self.app.mascot_view.end('explanation',bool(error))
+            self.busy=False;self.prepare.configure(state='normal')
             if error:
                 label=self.answer_label if kind=='answer' else (self.prepared_target or {}).get('label','')
                 self.write(self.output,'今回の説明は取得できませんでした。\n対象: '+label+'\n\n'+error+'\n\n接続設定や入力を確認して再度お試しください。自動再試行はしません。')

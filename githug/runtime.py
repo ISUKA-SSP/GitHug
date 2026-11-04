@@ -78,6 +78,7 @@ def launch(app_class, argv=None):
                 next(w for w in descendants(display_settings) if isinstance(w,ttk.Button) and w.cget('text')=='適用').invoke()
                 saved=json.loads(app.config_path.read_text(encoding='utf-8'))
                 report['guidance_preferences_saved']=not saved['hover_help'] and not saved['selection_guide'] and not app.tooltips.enabled
+                report['mascot_setting_saved']=not saved['mascot_animation'] and app.mascot_view.timer is None
                 display_settings=app.settings_dialog()
                 checks=[w for w in descendants(display_settings) if isinstance(w,ttk.Checkbutton)]
                 for w in checks:w.invoke()
@@ -146,6 +147,9 @@ def launch(app_class, argv=None):
                 report['key_not_in_config']=not any('key' in k.casefold() for k in app.config)
                 if not all(report[k] for k in ('display_settings_opened','guidance_preferences_saved','guidance_preferences_restored','hover_help_visible','hover_help_expires','hover_help_disabled','selection_guide_ready','key_not_in_config')):
                     raise RuntimeError('操作ガイドの確認に失敗しました: '+str(report))
+                from .mascot_smoke import verify_mascot
+                report.update(verify_mascot(app))
+                if not report['mascot_setting_saved']:raise RuntimeError('キャラクターの設定を保存できませんでした。')
                 report['callback_errors']=callback_errors
                 if not report['header_buttons_visible'] or not report['view_buttons_equal'] or callback_errors or report['sidebar_width']<180 or report['panel_width']<250 or not report['folder_tree_loaded'] or not report['explanation_prepared']:
                     raise RuntimeError('追加パネルの確認に失敗しました: '+str(report))
