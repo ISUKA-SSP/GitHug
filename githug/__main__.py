@@ -1101,6 +1101,7 @@ class App:
         if self.console.active:
             if not messagebox.askyesno('PowerShellも終了しますか？',
                 'PowerShellと、この画面から起動した処理を終了してGitHugを閉じますか？',parent=self.window):return
+            self.console.closing=True
             self.console.session.stop()
             self.status.set('PowerShellの終了を待っています…')
             self._finish_close(0)
@@ -1109,6 +1110,7 @@ class App:
     def _finish_close(self,attempt):
         if not self.console.active:self.window.destroy();return
         if attempt>=100:
+            self.console.closing=False
             messagebox.showwarning('終了を確認してください','PowerShellの終了をまだ確認できません。パネルの状態を確認してから、もう一度閉じてください。',parent=self.window)
             self.console.show();return
         self.window.after(50,lambda:self._finish_close(attempt+1))

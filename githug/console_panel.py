@@ -8,7 +8,7 @@ from .console_session import ConsoleSession, PromptFilter
 
 class ConsolePanel:
     def __init__(self,app):
-        self.app=app;self.session=None;self.visible=False;self.folder=None;self._switch_pending=False
+        self.app=app;self.session=None;self.visible=False;self.folder=None;self._switch_pending=False;self.closing=False
         self.screen=None;self.stream=None;self.prompt_filter=None;self.changed=False
         self.frame=ttk.Frame(app.workspace,padding=(12,8),style='Card.TFrame')
         self.frame.columnconfigure(0,weight=1);self.frame.rowconfigure(1,weight=1)
@@ -47,7 +47,7 @@ class ConsolePanel:
         ttk.Label(answer,text='途中の入力').grid(row=0,column=0,padx=(0,8))
         self.reply=tk.StringVar();self.reply_entry=ttk.Entry(answer,textvariable=self.reply)
         self.reply_entry.grid(row=0,column=1,sticky='ew');self.reply_entry.bind('<Return>',lambda e:(self.send_reply(),'break')[1])
-        self.reply_entry.bind('<Control-c>',lambda e:(self.interrupt(),'break')[1])
+        self.reply_entry.bind('<Control-c>',self.copy_reply_or_interrupt)
         self.reply_button=ttk.Button(answer,text='入力を送信',command=self.send_reply);self.reply_button.grid(row=0,column=2,padx=(8,0))
         ttk.Label(answer,text='隠しても処理は続きます',style='Muted.TLabel').grid(row=0,column=3,padx=(12,0))
         tips=app.tooltips
@@ -91,7 +91,7 @@ class ConsolePanel:
 
     def open(self,folder):
         folder=str(Path(folder).resolve(strict=True))
-        if self._switch_pending:return
+        if self._switch_pending or self.closing:return
         if self.active and os.path.normcase(folder)!=os.path.normcase(self.folder):
             if not messagebox.askyesno('PowerShellの作業場所を切り替える',
                 '今のPowerShellと実行中の処理を終了して、別のフォルダーで開き直しますか？\n\n現在: '+self.folder+'\n切り替え先: '+folder,parent=self.app.window):return
@@ -102,11 +102,16 @@ class ConsolePanel:
         if self.active:return
         self.start(folder)
 
-    def _restart_when_stopped(self,folder):
-        if self.active:self.frame.after(80,lambda:self._restart_when_stopped(folder));return
+    def _restart_when_stopped(self,folder,attempt=0):
+        if self.closing:return
+        if self.active:
+            if attempt>=100:
+                self._switch_pending=False;self.state.set('終了を確認できません。今のPowerShellの状態を確認してください。');return
+            self.frame.after(80,lambda:self._restart_when_stopped(folder,attempt+1));return
         self._switch_pending=False;self.start(folder)
 
     def start(self,folder):
+        if self.closing:return
         try:
             from .console_screen import ConsoleScreen
             import pyte
@@ -147,6 +152,10 @@ class ConsolePanel:
         if self.active and messagebox.askyesno('PowerShellを終了',
             'PowerShellと、この画面から起動した処理を終了しますか？\nパネルを隠すだけなら右端の✖を使ってください。',parent=self.app.window):
             self.session.stop();self.state.set('終了しています…')
+
+    def copy_reply_or_interrupt(self,event=None):
+        if self.reply_entry.selection_present():return None
+        self.interrupt();return 'break'
 
     def copy_or_interrupt(self,event=None):
         if self.output.tag_ranges('sel'):
