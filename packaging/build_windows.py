@@ -42,7 +42,7 @@ def main():
     icon=cache/'GitHug.ico';icon.write_bytes(icon_bytes())
     subprocess.run([sys.executable,'-m','PyInstaller','--noconfirm','--clean','--onedir','--windowed',
                     '--add-data',str(ROOT/'githug'/'assets')+os.pathsep+'githug/assets',
-                    '--collect-all','winpty','--exclude-module','pyte',
+                    '--collect-all','winpty','--collect-all','wcwidth','--exclude-module','pyte',
                     '--add-data',str(Path(importlib.metadata.distribution('pyte').locate_file('pyte')))+os.pathsep+'pyte',
                     '--noupx','--name','GitHug','--icon',str(icon),'--distpath',str(ROOT/'dist'),
                     '--workpath',str(ROOT/'build'/'pyinstaller'),'--specpath',str(cache),
