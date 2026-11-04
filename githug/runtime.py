@@ -83,12 +83,6 @@ def launch(app_class, argv=None):
                 for w in checks:w.invoke()
                 next(w for w in descendants(display_settings) if isinstance(w,ttk.Button) and w.cget('text')=='適用').invoke()
                 report['guidance_preferences_restored']=app.tooltips.enabled
-                app.tooltips.owner=app.history_header.entry
-                app.tooltips.show(app.history_header.entry,'検索欄の説明')
-                report['hover_help_visible']=bool(app.tooltips.tip)
-                app.tooltips.set_enabled(False)
-                report['hover_help_disabled']=app.tooltips.tip is None
-                app.tooltips.set_enabled(True)
                 settings=app.explanation.settings_dialog()
                 root.update_idletasks()
                 report['settings_dialog_opened']=settings.winfo_exists()
@@ -104,6 +98,19 @@ def launch(app_class, argv=None):
                 root.after(1400,root.quit)
                 root.mainloop()
                 root.update_idletasks()
+                root.update()
+                app.tooltips.owner=app.history_header.entry
+                app.tooltips.duration=40
+                app.tooltips.show(app.history_header.entry,'検索欄の説明')
+                report['hover_help_visible']=bool(app.tooltips.tip)
+                root.after(100,root.quit);root.mainloop()
+                report['hover_help_expires']=app.tooltips.tip is None
+                app.tooltips.duration=4500
+                app.tooltips.owner=app.history_header.entry
+                app.tooltips.show(app.history_header.entry,'検索欄の説明')
+                app.tooltips.set_enabled(False)
+                report['hover_help_disabled']=app.tooltips.tip is None
+                app.tooltips.set_enabled(True)
                 report['graph_items']=len(app.history.graph_view.canvas.find_all())
                 report['history_rows']=len(app.history.get_children())
                 report['folder_tree_loaded']=len(app.folder_browser.paths)>1
@@ -137,7 +144,7 @@ def launch(app_class, argv=None):
                 report['view_buttons_equal']=abs(view_buttons[0].winfo_width()-view_buttons[1].winfo_width())<=2
                 report['selection_guide_ready']=bool(app.action_guide.get())
                 report['key_not_in_config']=not any('key' in k.casefold() for k in app.config)
-                if not all(report[k] for k in ('display_settings_opened','guidance_preferences_saved','guidance_preferences_restored','hover_help_visible','hover_help_disabled','selection_guide_ready','key_not_in_config')):
+                if not all(report[k] for k in ('display_settings_opened','guidance_preferences_saved','guidance_preferences_restored','hover_help_visible','hover_help_expires','hover_help_disabled','selection_guide_ready','key_not_in_config')):
                     raise RuntimeError('操作ガイドの確認に失敗しました: '+str(report))
                 report['callback_errors']=callback_errors
                 if not report['header_buttons_visible'] or not report['view_buttons_equal'] or callback_errors or report['sidebar_width']<180 or report['panel_width']<250 or not report['folder_tree_loaded'] or not report['explanation_prepared']:

@@ -86,7 +86,7 @@ class ExplanationPanel:
                 if remember.get():
                     if not value:status.set('保存するAPIキーを入力してください。');return
                     self.key_store.write(value)
-                elif self.key_saved:self.key_store.delete()
+                elif self.key_store.available:self.key_store.delete()
             except CredentialError as exc:status.set(str(exc));return
             self.key_saved=remember.get();self.key_store_error=''
             self.model.set(model.get().strip());self.key.set(value)
