@@ -83,7 +83,7 @@ class Project:
         return [json.loads(p.read_text(encoding='utf-8')) for p in sorted((self.base / 'records').glob('*.json'), reverse=True)]
 
     def snapshots(self):
-        return [record for record in self.folder_versions() if record.get('kind') != 'work']
+        return [record for record in self.folder_versions() if record.get('kind') != 'work' and not record.get('hidden_from_list',False)]
 
     def compare(self, sha, folder, progress=None, cancelled=None):
         """Compare tracked commit contents with a folder without modifying that folder."""

@@ -153,6 +153,17 @@ def launch(app_class, argv=None):
                     from .console_smoke import verify_console
                     report.update(verify_console(app,directory,Path(args.smoke_test).with_name(Path(args.smoke_test).stem+'-terminal.png')))
                     if callback_errors:raise RuntimeError('PowerShellのGUI操作に失敗しました: '+str(callback_errors))
+                    from .folder_removal import recycle_registered, identity, hide_missing
+                    from .updating import atomic_json
+                    probe=directory/'GitHug-recycle-smoke';probe.mkdir()
+                    (probe/'日本語.txt').write_text('recoverable',encoding='utf-8')
+                    atomic_json(app.project.base/'records'/'recycle-smoke.json',{'folder':str(probe),'sha':ids[0],'kind':'snapshot','created':'2026-11-04T12:00:00'})
+                    destination=recycle_registered(app.project,probe,identity(probe))
+                    report['folder_recycle_preserved_data']=bool(destination and not probe.exists() and (Path(destination)/'日本語.txt').read_text(encoding='utf-8')=='recoverable')
+                    hide_missing(app.project,app.current,probe);app.load_folders()
+                    report['missing_folder_removed']=not app.project.snapshots()
+                    if not report['folder_recycle_preserved_data'] or not report['missing_folder_removed']:raise RuntimeError('フォルダーのごみ箱移動と一覧整理の確認に失敗しました。')
+
             report['history_size']=app.history.winfo_geometry()
             Path(args.smoke_test).write_text(json.dumps(report,ensure_ascii=False,indent=2),encoding='utf-8')
             root.destroy()

@@ -42,7 +42,7 @@ def main():
     icon=cache/'GitHug.ico';icon.write_bytes(icon_bytes())
     subprocess.run([sys.executable,'-m','PyInstaller','--noconfirm','--clean','--onedir','--windowed',
                     '--add-data',str(ROOT/'githug'/'assets')+os.pathsep+'githug/assets',
-                    '--collect-all','winpty','--collect-all','wcwidth','--exclude-module','pyte',
+                    '--collect-all','winpty','--hidden-import','win32com.shell.shell','--hidden-import','win32com.server.policy','--collect-all','wcwidth','--exclude-module','pyte',
                     '--add-data',str(Path(importlib.metadata.distribution('pyte').locate_file('pyte')))+os.pathsep+'pyte',
                     '--noupx','--name','GitHug','--icon',str(icon),'--distpath',str(ROOT/'dist'),
                     '--workpath',str(ROOT/'build'/'pyinstaller'),'--specpath',str(cache),
@@ -71,7 +71,7 @@ def main():
         if path.name in ('COPYING.txt','LICENSE','LICENSE.txt'):
             source=distribution.locate_file(path)
             if source.is_file():shutil.copy2(source,licenses/('PyInstaller-'+path.name))
-    for package in ('pywinpty','pyte','wcwidth'):
+    for package in ('pywinpty','pyte','wcwidth','pywin32'):
         dist=importlib.metadata.distribution(package)
         target=licenses/package;target.mkdir(exist_ok=True)
         for entry in dist.files or []:
@@ -83,7 +83,7 @@ def main():
     # pyte stays as replaceable Python source under _internal/pyte, outside the frozen archive.
     info={'version':__version__,'architecture':'Windows x64','python':sys.version,
           'pyinstaller':importlib.metadata.version('pyinstaller'),
-          'console_components':{name:importlib.metadata.version(name) for name in ('pywinpty','pyte','wcwidth')},
+          'console_components':{name:importlib.metadata.version(name) for name in ('pywinpty','pyte','wcwidth','pywin32')},
           'bundled_git':None if args.without_git else {'version':GIT_VERSION,'url':GIT_URL,'sha256':GIT_SHA256}}
     (folder/'build-info.json').write_text(json.dumps(info,ensure_ascii=False,indent=2),encoding='utf-8')
     archive=ROOT/'dist'/f'GitHug-{__version__}-Windows-x64.zip'
