@@ -778,7 +778,7 @@ class App:
         popup.rowconfigure(3, weight=1)
         ttk.Label(popup, text='更新先: ' + str(plan.folder), wraplength=640, padding=12).grid(row=0, column=0, sticky='ew')
         ttk.Label(popup, text='選んだ履歴: ' + plan.sha[:12] + '\n' +
-                  ('もとにした履歴が不明です。現在の内容を保管してからの更新をおすすめします。' if plan.unknown else
+                  ('もとにした履歴が不明です。現在の内容をバックアップしてからの更新をおすすめします。' if plan.unknown else
                    f'手元の変更・追加など: {len(plan.differences)} 件（もとにした履歴 {plan.baseline[:8]} との比較）'),
                   padding=(12, 0), wraplength=640).grid(row=1, column=0, sticky='ew')
         ttk.Label(popup, text='元の版にあるファイルは選んだ版へ更新し、そのファイルへの手元の編集は引き継ぎません。\n'
@@ -795,7 +795,7 @@ class App:
         checkbox.pack(anchor='w')
         if plan.unknown:
             checkbox.configure(state='disabled')
-            text = 'もとにした履歴が不明なため、手元だけのファイルを判別できません。別フォルダーへのコピーか、保管しての入れ替えを選んでください。'
+            text = 'もとにした履歴が不明なため、手元だけのファイルを判別できません。別フォルダーへのコピーか、バックアップしての入れ替えを選んでください。'
         elif plan.collisions:
             text = f'選んだ版との衝突が {len(plan.collisions)} 件あります。残す設定のままでは更新せずに案内します。'
         else:
@@ -822,7 +822,7 @@ class App:
                         '更新前の内容をバックアップせずに更新します。\n' + detail + '\n' + str(plan.folder), parent=popup):
                     return
             elif not preserve and not messagebox.askyesno('追加ファイルも入れ替えます',
-                    '「手元だけのファイルを残す」がOFFです。\n追加ファイルも更新先から取り除きます（保管ZIPには残ります）。\n続けますか？', parent=popup):
+                    '「手元だけのファイルを残す」がOFFです。\n追加ファイルも更新先から取り除きます（バックアップZIPには残ります）。\n続けますか？', parent=popup):
                 return
             popup.destroy()
             def progress(note): self.operation_note = note
@@ -851,10 +851,10 @@ class App:
         popup = tk.Toplevel(self.window)
         popup.title('更新前のバックアップ — ' + project.name)
         popup.geometry('950x550')
-        ttk.Label(popup, text='更新前の内容をZIPで保管しています。復元するときはZIPを別の場所へ展開してください。', padding=12).pack(anchor='w')
+        ttk.Label(popup, text='更新前の内容をZIPでバックアップしています。復元するときはZIPを別の場所へ展開してください。', padding=12).pack(anchor='w')
         controls = ttk.Frame(popup, padding=12)
         controls.pack(side='bottom', fill='x')
-        table = self.table(popup, ('created', 'folder', 'size'), ('保管日時', '元のフォルダー', 'サイズ'))
+        table = self.table(popup, ('created', 'folder', 'size'), ('バックアップ日時', '元のフォルダー', 'サイズ'))
         items = {}
         def reload():
             table.delete(*table.get_children())

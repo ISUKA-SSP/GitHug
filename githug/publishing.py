@@ -240,7 +240,7 @@ def publish(project, plan, paths, branch, is_new, message, author_name, author_e
     selected_changes(plan, paths)
     tip = remote_head(project, branch)
     if is_new:
-        if tip: raise RemoteChanged('同じ名前の枝が既にあります。別の名前で新しく送ってください。')
+        if tip: raise RemoteChanged('同じ名前の分岐が既にあります。別の名前で新しく送ってください。')
         expected = ''
     else:
         expected = plan.branches.get(branch)

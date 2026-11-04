@@ -256,7 +256,7 @@ def inspect_update(project, folder, sha, progress=None, *, for_authorization=Fal
                     except GitError:
                         upstream = None
                     if upstream != commit:
-                        differences.append(('手元に保持された枝・履歴', ref))
+                        differences.append(('手元に保持された分岐・履歴', ref))
             except GitError:
                 differences.append(('Git管理情報の状態を確認できません', '.git'))
     else:
@@ -277,7 +277,7 @@ def archive_folder(folder, destination, progress=None):
                     path = Path(parent) / name
                     relative = path.relative_to(folder).as_posix()
                     if progress:
-                        progress('保管しています: ' + relative)
+                        progress('バックアップしています: ' + relative)
                     archive.write(path, relative + ('/' if path.is_dir() else ''))
         temporary.replace(destination)
     except BaseException:
@@ -292,7 +292,7 @@ def apply_update(project, plan, keep_backup=True, progress=None, preserve_local_
     if target != plan.folder or inventory(target, progress) != plan.fingerprint:
         raise UpdateConflict('確認後にフォルダーの内容が変わりました。変更は行いませんでした。もう一度確認してください。')
     if preserve_local_only and plan.unknown:
-        raise UpdateConflict('もとにした履歴が不明なため、手元だけのファイルを判別できません。別フォルダーへのコピー、または保管付きの完全な入れ替えを選んでください。')
+        raise UpdateConflict('もとにした履歴が不明なため、手元だけのファイルを判別できません。別フォルダーへのコピー、またはバックアップ付きの完全な入れ替えを選んでください。')
     if preserve_local_only and plan.collisions:
         raise UpdateConflict('手元だけのファイルと選んだ版が衝突しています。更新は行いませんでした。\n' +
                              '\n'.join(plan.collisions[:20]) + '\n別フォルダーへのコピーか、ファイルの移動後に再度更新してください。')
@@ -334,7 +334,7 @@ def apply_update(project, plan, keep_backup=True, progress=None, preserve_local_
                         'created': datetime.now().isoformat(), 'archive': str(backup)})
             journal['backup'] = str(backup)
         if inventory(previous, progress) != plan.fingerprint:
-            raise UpdateConflict('保管中にファイルが変更されました。元の場所へ戻します。')
+            raise UpdateConflict('バックアップ中にファイルが変更されました。元の場所へ戻します。')
         staged.rename(target)
         swapped = True
         journal['state'] = 'installed'
