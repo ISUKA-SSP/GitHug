@@ -27,7 +27,8 @@ def startup_script(marker,command_dir):
     # Files are read as text, then immediately removed; no execution-policy changes.
     return ("$OutputEncoding = [Console]::OutputEncoding = [Text.UTF8Encoding]::new($false)\n"
             "Remove-Module PSReadLine -ErrorAction SilentlyContinue\n"
-            "function global:prompt { [Console]::Write([Environment]::NewLine + '"+marker+"'); 'PS ' + (Get-Location).Path + '> ' }\n"
+            "$global:__GitHugPromptNumber=0\n"
+            "function global:prompt { [Console]::Title = '"+marker+"' + (++$global:__GitHugPromptNumber); 'PS ' + (Get-Location).Path + '> ' }\n"
             "function global:Get-GitHugCommand([string]$id) {\n"
             " if ($id -notmatch '^[a-f0-9]{32}$') { throw 'Invalid command id' }\n"
             " $p = [IO.Path]::Combine('"+literal+"', $id + '.txt')\n"

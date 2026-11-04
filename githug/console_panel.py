@@ -131,7 +131,9 @@ class ConsolePanel:
 
     def execute(self):
         if not self.session:return
-        try:self.session.execute(self.editor.get('1.0','end-1c'))
+        commands=self.editor.get('1.0','end-1c')
+        if not commands.strip():self.state.set('右の欄に実行するコマンドを入力してください。');return
+        try:self.session.execute(commands)
         except (ValueError,RuntimeError) as exc:self.state.set(str(exc));return
         self.state.set('実行中・入力できます');self.run_button.configure(state='disabled');self.reply_entry.focus_set()
 
