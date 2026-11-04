@@ -30,6 +30,14 @@ class FolderRemovalTests(unittest.TestCase):
         self.assertEqual(self.project.folder_versions()[0]['sha'],'a'*40)
         self.assertEqual(Notes(self.project.base).get('folders',folder),'残すメモ')
 
+    def test_hidden_record_cannot_authorize_a_reused_path(self):
+        from githug.updating import record_for_folder, require_update_permission, UpdateNotAllowed
+        folder=self.root/'reused';self.record(folder)
+        hide_missing(self.project,{'work':[]},folder)
+        folder.mkdir();(folder/'new.txt').write_text('different data')
+        self.assertEqual(record_for_folder(self.project,folder),(None,None))
+        with self.assertRaises(UpdateNotAllowed):require_update_permission(self.project,folder,'a'*40)
+
     def test_hide_missing_work_removes_registration_only_in_this_project(self):
         folder=self.root/'missing';meta=self.record(folder,kind='work')
         other=self.root/'other';reg={'work':[str(folder),str(other)]}

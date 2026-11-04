@@ -993,7 +993,7 @@ class App:
                 'search': ' '.join((kind, folder, sha, date, created, state, memo)),
                 'sort': {'kind': kind.casefold(), 'path': folder.casefold(), 'sha': sha,
                          'created': timestamp, 'state': state, 'memo': memo.casefold()}})
-        versions = {str(Path(r['folder']).resolve()): r for r in self.project.folder_versions()}
+        versions = {str(Path(r['folder']).resolve()): r for r in self.project.folder_versions() if not r.get('hidden_from_list',False)}
         for index, folder in enumerate(self.current.get('work', [])):
             record = versions.get(str(Path(folder).resolve()), {})
             add('work:' + str(index), '作業用（登録）', folder, record.get('sha', ''), record.get('created', ''))
