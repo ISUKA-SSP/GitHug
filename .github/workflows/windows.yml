@@ -29,6 +29,13 @@ jobs:
         run: python -m pip install -r packaging/requirements-build.txt
       - name: Test source
         run: python -m unittest discover -s tests -v
+      - name: Verify source GUI
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force build | Out-Null
+          python -m githug --smoke-test build/source-smoke.json
+          Get-Content build/source-smoke.json
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - name: Build portable application
         run: python packaging/build_windows.py
       - name: Scan current distribution with Defender
