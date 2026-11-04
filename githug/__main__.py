@@ -26,6 +26,7 @@ from .splitter import SidebarSplitter, SectionSplitter
 from .explanation_panel import ExplanationPanel
 from .drag_hint import DragHint
 from .branding import attach_logo
+from .guidance import HoverHelp, register_buttons
 
 class App:
     def __init__(self, window):
@@ -35,11 +36,12 @@ class App:
         window.geometry('1360x900')
         window.minsize(1100, 800)
         logo = attach_logo(window)
-        self.config_path = Path(os.environ.get('APPDATA', Path.home() / '.config')) / 'GitHug' / 'settings.json'
+        self.config_path = (Path(window._githug_smoke_dir) / 'settings.json' if getattr(window,'_githug_smoke',False) else Path(os.environ.get('APPDATA', Path.home() / '.config')) / 'GitHug' / 'settings.json')
         try:
             self.config = json.loads(self.config_path.read_text(encoding='utf-8'))
         except (FileNotFoundError, ValueError):
             self.config = {'root': '', 'projects': []}
+        self.tooltips = HoverHelp(window, self.config.get('hover_help', True))
         self.project = None
         self.notes = None
         self.dragging = None
@@ -69,6 +71,7 @@ class App:
         self.mascot.pack(side='right', padx=(16,0))
         self.operation_state = tk.StringVar(value='待機中')
         ttk.Button(appbar, text='使い方・環境', command=self.guide, style='Quiet.TButton').pack(side='right')
+        ttk.Button(appbar, text='設定', command=self.settings_dialog, style='Quiet.TButton').pack(side='right', padx=4)
         self.activity_bar = ttk.Progressbar(appbar, mode='indeterminate', length=90)
         self.activity_bar.pack(side='right', padx=12)
         ttk.Label(appbar, textvariable=self.operation_state, style='AppbarMuted.TLabel').pack(side='right')
@@ -96,7 +99,10 @@ class App:
         self.projects.configure(height=6)
         self.projects.pack(fill='x', pady=8)
         self.projects.bind('<<ListboxSelect>>', self.select_project)
-        ttk.Label(left,text='上：GitHubの履歴\n下：PCの作業場所\nドラッグで行き来できます',style='Muted.TLabel',wraplength=170).pack(anchor='w',pady=(8,0))
+        self.action_guide = tk.StringVar()
+        self.guide_label = ttk.Label(left,textvariable=self.action_guide,style='Muted.TLabel',wraplength=170)
+        if self.config.get('selection_guide', True):self.guide_label.pack(anchor='w',pady=(8,0))
+        self.set_action_guide('default')
         self.folder_browser = FolderTree(left, self.inspect_file)
         right = ttk.Frame(split, width=800)
         right.pack_propagate(False)
@@ -155,11 +161,50 @@ class App:
         self.configure_sort('folders', self.folders, ('sha', 'created', 'state', 'path', 'memo'))
         self.history_query.trace_add('write', lambda *_: self.render_history())
         self.folder_query.trace_add('write', lambda *_: self.render_folders())
+        register_buttons(window, self.tooltips)
+        for header in (self.history_header, self.folder_header):
+            self.tooltips.add(header.entry, '一覧を絞り込みます。自分用メモも検索できます。×またはEscで解除します。')
+            self.tooltips.add(header.clear_button, '検索を解除して一覧へ戻します。')
+        self.tooltips.add(self.history, '履歴を選び、下のPCのフォルダーへドラッグしてコピーできます。行の右クリックでも操作できます。')
+        self.tooltips.add(self.history.graph_view.canvas, '丸が一つの履歴、線が履歴のつながりです。下へドラッグするとPCへコピーできます。')
+        self.tooltips.add(self.folders, 'フォルダーを上の履歴へドラッグすると、ファイルを確認してGitHubへ送れます。')
         self.populate_projects()
         self._sections_initialized = False
         self.sections.bind('<Configure>', self.initialize_sections, add='+')
         window.after(150, lambda: self.main_split.sashpos(0, 245))
         window.after(100, self.poll)
+
+    def set_action_guide(self, kind):
+        self.guide_kind=kind
+        text={
+            'default':'上：GitHubの履歴\n下：PCのフォルダー\n項目を選ぶと操作を案内します。',
+            'history':'この履歴を下のPC欄の空いている場所へドラッグすると、新しいフォルダーにコピーします。フォルダーの行へ重ねると、更新方法を確認できます。',
+            'folder':'このフォルダーを上の履歴へドラッグすると、送るファイルを確認してGitHubへ送信できます。ドラッグだけでは送信しません。',
+        }[kind]
+        self.action_guide.set(text)
+
+    def settings_dialog(self):
+        existing=getattr(self,'settings_window',None)
+        if existing is not None and existing.winfo_exists():existing.lift();return existing
+        popup=tk.Toplevel(self.window);self.settings_window=popup
+        popup.title('GitHug — 表示・操作の設定');popup.geometry('620x330');popup.minsize(520,310)
+        area=ttk.Frame(popup,padding=18);area.pack(fill='both',expand=True)
+        ttk.Label(area,text='操作を助ける表示',style='Heading.TLabel').pack(anchor='w',pady=(0,12))
+        hover=tk.BooleanVar(value=self.config.get('hover_help',True))
+        guide=tk.BooleanVar(value=self.config.get('selection_guide',True))
+        ttk.Checkbutton(area,text='マウスを重ねたときに説明を表示',variable=hover).pack(anchor='w',pady=6)
+        ttk.Label(area,text='少し待つと表示し、数秒で消えます。',style='Muted.TLabel').pack(anchor='w')
+        ttk.Checkbutton(area,text='選んだ履歴・フォルダーの操作案内を左側に表示',variable=guide).pack(anchor='w',pady=(16,6))
+        buttons=ttk.Frame(area);buttons.pack(side='bottom',fill='x')
+        def apply():
+            self.config.update(hover_help=hover.get(),selection_guide=guide.get());self.save()
+            self.tooltips.set_enabled(hover.get())
+            if guide.get():self.guide_label.pack(anchor='w',pady=(8,0),before=self.folder_browser.frame)
+            else:self.guide_label.pack_forget()
+            popup.destroy()
+        ttk.Button(buttons,text='キャンセル',command=popup.destroy).pack(side='right')
+        ttk.Button(buttons,text='適用',command=apply,style='Primary.TButton').pack(side='right',padx=8)
+        return popup
 
     def initialize_sections(self, event):
         if not self._sections_initialized and event.height >= 540:
@@ -182,6 +227,7 @@ class App:
     def browse_selected_folder(self, event=None):
         items=self.folders.selection()
         if not items:return
+        self.set_action_guide('folder')
         folder=self.folders.item(items[0], 'values')[1]
         if self.folder_browser.root!=folder:self.folder_browser.set_folder(folder)
 
@@ -200,7 +246,9 @@ class App:
             '自分用メモ・VS Code・PowerShellは、行の右クリックから開けます。\n'
             '同じ場所への更新は、GitHugのコピーフォルダーか、明示的に有効にした作業用だけです。\n\n'
             '公開プロジェクトの取得にはログイン不要です。送信・非公開プロジェクトにはPC側のGitHub認証が必要です。\n'
-            'Geminiは任意。説明を頼むボタンを押すまで呼び出しません。\n\n'
+            'Geminiは任意。説明を頼むボタンを押すまで呼び出しません。\n'
+            'APIキーは接続設定で任意保存できます。保存先はWindowsの資格情報マネージャーです。\n'
+            'マウスの説明・左側の操作案内は「設定」で切り替えられます。\n\n'
             '使用するGit：'+git_executable()+'\n設定：'+str(self.config_path))
         ttk.Label(popup,text=text,wraplength=700,padding=(16,0),justify='left').pack(fill='both',expand=True)
         ttk.Button(popup,text='閉じる',command=popup.destroy).pack(anchor='e',padx=16,pady=16)
@@ -420,6 +468,7 @@ class App:
         if not indices: return
         self.folder_browser.set_folder(None)
         self.explanation.choose(None)
+        self.set_action_guide('default')
         self.current = self.config['projects'][indices[0]]
         self.project = Project(self.config['root'], self.current['url'])
         self.records = {}
@@ -496,6 +545,7 @@ class App:
         items = self.history.selection()
         self.history.graph_view.set_focus(items[0] if items else None)
         if items:
+            self.set_action_guide('history')
             r = self.records[items[0]]
             subject = r['message'][:100] + ('…' if len(r['message']) > 100 else '')
             parents = '・'.join(value[:8] for value in r['parents'].split()) or '最初の履歴'
