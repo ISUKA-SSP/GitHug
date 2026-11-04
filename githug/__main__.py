@@ -22,7 +22,7 @@ from .history_graph import HistoryGraph, history_page
 from .graph_view import GraphView
 from .folder_tree import FolderTree
 from .search_header import SearchHeader
-from .splitter import SidebarSplitter
+from .splitter import SidebarSplitter, SectionSplitter
 from .explanation_panel import ExplanationPanel
 from .drag_hint import DragHint
 from .branding import attach_logo
@@ -101,7 +101,7 @@ class App:
         right = ttk.Frame(split, width=800)
         right.pack_propagate(False)
         split.add(right, weight=1)
-        self.sections = ttk.Panedwindow(right, orient='vertical')
+        self.sections = SectionSplitter(right)
         self.sections.pack(fill='both', expand=True)
         history_tab = ttk.Frame(self.sections, padding=12, style='Card.TFrame')
         history_tab.columnconfigure(0, weight=1)

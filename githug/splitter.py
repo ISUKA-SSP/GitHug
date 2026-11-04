@@ -15,3 +15,19 @@ class SidebarSplitter(tk.PanedWindow):
         if newpos is None:return self.sash_coord(index)[0]
         self.sash_place(index,newpos,0)
         return self.sash_coord(index)[0]
+
+
+class SectionSplitter(tk.PanedWindow):
+    """Keep both lists visible when their requested sizes change at startup."""
+    def __init__(self,parent):
+        super().__init__(parent,orient='vertical',background='#383838',borderwidth=0,
+                         sashwidth=7,sashrelief='flat',opaqueresize=True,showhandle=False)
+
+    def add(self,child,weight=0,**kwargs):
+        minimum=220 if not self.panes() else 160
+        super().add(child,minsize=minimum,stretch='always',**kwargs)
+
+    def sashpos(self,index,newpos=None):
+        if newpos is None:return self.sash_coord(index)[1]
+        self.sash_place(index,0,newpos)
+        return self.sash_coord(index)[1]

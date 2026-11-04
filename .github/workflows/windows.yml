@@ -68,6 +68,8 @@ jobs:
         with:
           name: GitHug-build-diagnostics
           path: |
+            build/source-smoke.json
+            build/source-smoke.png
             build/windows-smoke.json
             build/windows-smoke.png
             build/security/
