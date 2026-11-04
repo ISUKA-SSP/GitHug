@@ -67,7 +67,7 @@ class WindowsConsoleTests(unittest.TestCase):
         self.assertFalse(self.session.ready)
         self.session.write('はい\r');self.wait(lambda:self.session.ready and 'ANSWER:日本語:はい' in self.output)
         self.assertIn(str(self.folder),self.screen.text())
-        self.session.execute("Write-Output ('RETAINED:'+$label)")
+        self.session.execute("Write-Host -NoNewline ('RETAINED:'+$label)")
         self.wait(lambda:self.session.ready and 'RETAINED:日本語' in self.output)
         python=str(Path(sys.executable)).replace("'","''")
         self.session.execute("& '"+python+"' -u -c 'v=input(\"PYQUESTION:\");print(\"PYANSWER:\"+v)'")
