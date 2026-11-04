@@ -9,7 +9,7 @@ import time
 import tkinter as tk
 from tkinter import ttk, filedialog, messagebox, simpledialog
 from .core import Project, ComparisonCancelled
-from .terminal import open_powershell
+from .console_panel import ConsolePanel
 from . import __version__
 from .listing import date_value, visible_rows
 from .theme import apply_dark_theme
@@ -79,6 +79,7 @@ class App:
         toolbar.pack(fill='x', padx=16, pady=(0,12))
         ttk.Button(toolbar, text='GitHubの履歴を更新', command=self.refresh, style='Primary.TButton').pack(side='left', padx=4)
         ttk.Button(toolbar, text='＋ プロジェクト', command=self.add).pack(side='left', padx=4)
+        ttk.Button(toolbar,text='PowerShell',command=self.toggle_console).pack(side='left',padx=4)
         ttk.Button(toolbar, text='更新前のバックアップ', command=self.backups_dialog).pack(side='left', padx=4)
         ttk.Button(toolbar, text='コピー・履歴の保存先', command=self.choose_root, style='Quiet.TButton').pack(side='right', padx=4)
         self.status = tk.StringVar(value='「＋ プロジェクト」からGitHubのURLを追加して始めましょう。')
@@ -87,9 +88,11 @@ class App:
         status_label=ttk.Label(footer,textvariable=self.status,style='Muted.TLabel',wraplength=1250)
         status_label.pack(fill='x')
         status_label.bind('<Configure>',lambda event:status_label.configure(wraplength=max(100,event.width-4)))
-        split = SidebarSplitter(window, orient='horizontal')
+        self.workspace = ttk.Frame(window)
+        self.workspace.pack(fill='both',expand=True,padx=16)
+        split = SidebarSplitter(self.workspace, orient='horizontal')
         self.main_split = split
-        split.pack(fill='both', expand=True, padx=16)
+        split.pack(fill='both', expand=True)
         left = ttk.Frame(split, padding=12, style='Card.TFrame')
         left.configure(width=245)
         left.pack_propagate(False)
@@ -153,6 +156,8 @@ class App:
         ttk.Button(folder_controls, text='フォルダーを開く', command=self.open_folder).pack(side='left', padx=4)
         ttk.Button(folder_controls, text='PowerShell／コマンド', command=self.command_dialog).pack(side='left', padx=4)
         ttk.Button(folder_controls, text='一覧を再表示', command=self.check_folder_tab).pack(side='left', padx=4)
+        self.console = ConsolePanel(self)
+        window.protocol('WM_DELETE_WINDOW', self.close_app)
         self.explanation = ExplanationPanel(split, self)
         self.explanation_visible = False
         ttk.Button(toolbar, text='説明パネル', command=self.toggle_explanation).pack(side='right', padx=4)
@@ -244,6 +249,8 @@ class App:
             '3  PCから履歴へドラッグ：ファイルを確認してGitHubへ送信。\n\n'
             '検索は全履歴と自分用メモが対象です。選んだ履歴をグラフで見る操作で、その流れへ戻れます。\n'
             '自分用メモ・VS Code・PowerShellは、行の右クリックから開けます。\n'
+            'PowerShellは下側のパネルで操作します。右の欄に複数行のコマンド、下の欄に途中の回答を入力できます。\n'
+            '✖はパネルを隠すだけです。「処理を中断」はCtrl+C、「終了」はPowerShellとその処理を終了します。\n'
             '同じ場所への更新は、GitHugのコピーフォルダーか、明示的に有効にした作業用だけです。\n\n'
             '公開プロジェクトの取得にはログイン不要です。送信・非公開プロジェクトにはPC側のGitHub認証が必要です。\n'
             'Geminiは任意。説明を頼むボタンを押すまで呼び出しません。\n'
@@ -1082,40 +1089,31 @@ class App:
         self.with_selected_folder(self.command_dialog_for_folder)
 
     def command_dialog_for_folder(self, folder):
-        popup = tk.Toplevel(self.window)
-        popup.title('PowerShellで開く／コマンドを実行')
-        popup.geometry('820x520')
-        popup.minsize(600, 360)
-        popup.columnconfigure(0, weight=1)
-        popup.rowconfigure(2, weight=1)
-        ttk.Label(popup, text='作業場所: ' + folder, padding=12, wraplength=560).grid(
-            row=0, column=0, sticky='ew')
-        ttk.Label(popup, text='実行するコマンドを貼り付けてください（複数行可）。空欄ならPowerShellを開くだけです。',
-                  padding=(12, 0), wraplength=560).grid(row=1, column=0, sticky='ew')
-        editor_frame = ttk.Frame(popup, padding=12)
-        editor_frame.grid(row=2, column=0, sticky='nsew')
-        editor = tk.Text(editor_frame, width=1, height=1, wrap='none', undo=True, font=('Consolas', 11))
-        vertical = ttk.Scrollbar(editor_frame, orient='vertical', command=editor.yview)
-        horizontal = ttk.Scrollbar(editor_frame, orient='horizontal', command=editor.xview)
-        editor.configure(yscrollcommand=vertical.set, xscrollcommand=horizontal.set)
-        horizontal.pack(side='bottom', fill='x')
-        vertical.pack(side='right', fill='y')
-        editor.pack(fill='both', expand=True)
-        ttk.Label(popup, text='実行後もPowerShellは開いたままです。入力したコマンドは保存しません。',
-                  padding=(12, 0), wraplength=560).grid(row=3, column=0, sticky='ew')
-        buttons = ttk.Frame(popup, padding=12)
-        buttons.grid(row=4, column=0, sticky='ew')
-        def launch():
-            try:
-                open_powershell(folder, editor.get('1.0', 'end-1c'))
-            except Exception as exc:
-                messagebox.showerror('PowerShellを開けませんでした', str(exc), parent=popup)
-                return
-            self.status.set('PowerShellを開きました: ' + folder)
-            popup.destroy()
-        ttk.Button(buttons, text='PowerShellを開いて実行', command=launch).pack(side='right')
-        ttk.Button(buttons, text='キャンセル', command=popup.destroy).pack(side='right', padx=8)
-        editor.focus_set()
+        try:self.console.open(folder)
+        except Exception as exc:messagebox.showerror('PowerShellを開けませんでした',str(exc),parent=self.window)
+
+    def toggle_console(self):
+        if self.console.visible:self.console.hide()
+        elif self.console.session:self.console.show()
+        else:self.command_dialog()
+
+    def close_app(self):
+        if self.console.active:
+            if not messagebox.askyesno('PowerShellも終了しますか？',
+                'PowerShellと、この画面から起動した処理を終了してGitHugを閉じますか？',parent=self.window):return
+            self.console.closing=True
+            self.console.session.stop()
+            self.status.set('PowerShellの終了を待っています…')
+            self._finish_close(0)
+        else:self.window.destroy()
+
+    def _finish_close(self,attempt):
+        if not self.console.active:self.window.destroy();return
+        if attempt>=100:
+            self.console.closing=False
+            messagebox.showwarning('終了を確認してください','PowerShellの終了をまだ確認できません。パネルの状態を確認してから、もう一度閉じてください。',parent=self.window)
+            self.console.show();return
+        self.window.after(50,lambda:self._finish_close(attempt+1))
 
     def compare(self):
         items = self.history.selection()

@@ -2,7 +2,7 @@ name: Build Windows portable
 
 on:
   push:
-    branches: [main, 'gpt/first-prototype', 'gpt/usability-stage1', 'gpt/usability-stage2']
+    branches: [main, 'gpt/first-prototype', 'gpt/usability-stage1', 'gpt/usability-stage2', 'gpt/usability-stage3']
   workflow_dispatch:
 
 permissions:
@@ -42,7 +42,7 @@ jobs:
         shell: pwsh
         run: |
           ./packaging/scan_windows.ps1 -Target dist/GitHug -Report build/security/current-folder.json
-          ./packaging/scan_windows.ps1 -Target dist/GitHug-1.1.0a2-Windows-x64.zip -Report build/security/current-zip.json
+          ./packaging/scan_windows.ps1 -Target dist/GitHug-1.1.0a3-Windows-x64.zip -Report build/security/current-zip.json
       - name: Verify EXE with bundled Git
         run: python packaging/verify_bundle.py dist/GitHug build/windows-smoke.json
       - name: Upload Windows application
@@ -58,8 +58,8 @@ jobs:
         with:
           name: GitHug-release-files
           path: |
-            dist/GitHug-1.1.0a2-Windows-x64.zip
-            dist/GitHug-1.1.0a2-Windows-x64.sha256
+            dist/GitHug-1.1.0a3-Windows-x64.zip
+            dist/GitHug-1.1.0a3-Windows-x64.sha256
           if-no-files-found: error
           retention-days: 30
       - name: Upload build diagnostics
@@ -70,8 +70,10 @@ jobs:
           path: |
             build/source-smoke.json
             build/source-smoke.png
+            build/source-smoke-terminal.png
             build/windows-smoke.json
             build/windows-smoke.png
+            build/windows-smoke-terminal.png
             build/security/
             dist/*.sha256
             build/pyinstaller/GitHug/warn-GitHug.txt

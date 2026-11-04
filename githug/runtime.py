@@ -149,6 +149,10 @@ def launch(app_class, argv=None):
                 report['callback_errors']=callback_errors
                 if not report['header_buttons_visible'] or not report['view_buttons_equal'] or callback_errors or report['sidebar_width']<180 or report['panel_width']<250 or not report['folder_tree_loaded'] or not report['explanation_prepared']:
                     raise RuntimeError('追加パネルの確認に失敗しました: '+str(report))
+                if os.name=='nt':
+                    from .console_smoke import verify_console
+                    report.update(verify_console(app,directory,Path(args.smoke_test).with_name(Path(args.smoke_test).stem+'-terminal.png')))
+                    if callback_errors:raise RuntimeError('PowerShellのGUI操作に失敗しました: '+str(callback_errors))
             report['history_size']=app.history.winfo_geometry()
             Path(args.smoke_test).write_text(json.dumps(report,ensure_ascii=False,indent=2),encoding='utf-8')
             root.destroy()
