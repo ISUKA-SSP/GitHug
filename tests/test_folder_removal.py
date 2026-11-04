@@ -98,7 +98,7 @@ class RemovalConfirmationTests(unittest.TestCase):
             with patch('githug.__main__.messagebox.askyesno',return_value=False) as confirm:
                 App.recycle_selected_folder(app)
             app.run.assert_not_called();self.assertTrue(folder.is_dir())
-            self.assertIn('作業用',confirm.call_args.args[1]);self.assertIn(str(folder),confirm.call_args.args[1])
+            self.assertIn('作業用',confirm.call_args.args[1]);self.assertIn(str(folder.resolve()),confirm.call_args.args[1])
             self.assertEqual(confirm.call_args.kwargs['default'],'no')
 
     def test_active_console_prevents_delete(self):
