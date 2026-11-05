@@ -179,6 +179,8 @@ class App:
         self.folder_query.trace_add('write', lambda *_: self.render_folders())
         register_buttons(window, self.tooltips)
         self.terms.bind_variable(self.action_guide)
+        self.terms.bind_variable(self.operation_state)
+        self.terms.bind_variable(self.status)
         self.terms.refresh()
         for header in (self.history_header, self.folder_header):
             self.tooltips.add(header.entry, '一覧を絞り込みます。自分用メモも検索できます。×またはEscで解除します。')
