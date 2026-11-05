@@ -32,13 +32,23 @@ class WindowsConsoleTests(unittest.TestCase):
     def setUp(self):
         self.temp=tempfile.TemporaryDirectory(prefix='GitHug-console-test-')
         self.folder=Path(self.temp.name)/"日本語 [folder] ' quote";self.folder.mkdir()
-        self.addCleanup(self.temp.cleanup)
+        self.addCleanup(self.cleanup_temporary_folder)
         self.session=ConsoleSession(self.folder,rows=25,columns=140)
         self.addCleanup(self.cleanup_session)
         self.filter=PromptFilter(self.session.marker)
         self.screen=ConsoleScreen(140,25,self.session.write);self.stream=pyte.Stream(self.screen)
         self.output=''
         self.wait(lambda:self.session.ready,20)
+
+    def cleanup_temporary_folder(self):
+        # Windows can release ConPTY working-directory handles shortly after the session worker exits.
+        # Wait for actual cleanup; never suppress a persistent lock or ignore leaked processes.
+        deadline=time.monotonic()+5
+        while True:
+            try:self.temp.cleanup();return
+            except PermissionError:
+                if time.monotonic()>=deadline:raise
+                time.sleep(.05)
 
     def cleanup_session(self):
         self.session.stop();self.assertTrue(self.session.finished.wait(8),'console did not stop')
