@@ -208,7 +208,10 @@ class PushUI:
                     if messagebox.askyesno('GitHubへ送信',f"{project.name}\n{app.terms.text('分岐')}: {destination}\n変更 {counts['M']} 件 ／ 追加 {counts['A']} 件 ／ 削除 {counts['D']} 件"+deletion_note+'\n選んだ内容を記録してGitHubへ送りますか？',parent=popup):execute()
             if new:direct();return
             def rebuild():
-                return prepare_resolution(project,destination,plan,paths,progress=lambda note:setattr(app,'operation_note',note))
+                fresh=inspect_push(project,plan.folder,plan.base,lambda note:setattr(app,'operation_note',note))
+                remaining=[path for path in paths if path in {change.path for change in fresh.changes}]
+                if not remaining:raise ValueError('選んだファイルの差分がなくなりました。送信画面を閉じ、フォルダーからもう一度変更を確認してください。')
+                return prepare_resolution(project,destination,fresh,remaining,progress=lambda note:setattr(app,'operation_note',note))
             def check():
                 try:destination_expected(project,plan,destination,False);return None
                 except RemoteChanged:return rebuild()
