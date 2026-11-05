@@ -20,6 +20,8 @@ def launch(app_class, argv=None):
     if args.version:
         if sys.stdout:print(__version__)
         return 0
+    if args.smoke_test:
+        Path(args.smoke_test).parent.mkdir(parents=True,exist_ok=True)
     enable_dpi_awareness()
     import tkinter as tk
     from tkinter import ttk
