@@ -11,7 +11,7 @@ from githug.notes import Notes
 class BatchTests(unittest.TestCase):
     def setUp(self):
         self.tmp=tempfile.TemporaryDirectory();self.addCleanup(self.tmp.cleanup)
-        self.root=Path(self.tmp.name);self.project=Project(self.root/'storage','https://github.com/example/test')
+        self.root=Path(self.tmp.name).resolve();self.project=Project(self.root/'storage','https://github.com/example/test')
         (self.project.base/'records').mkdir(parents=True)
         self.existing=self.root/'existing';self.existing.mkdir();self.missing=self.root/'missing'
         self.entries=[('作業用（登録）',str(self.existing)),('コピーしたフォルダー',str(self.missing))]

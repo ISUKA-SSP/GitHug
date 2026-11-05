@@ -25,9 +25,12 @@ class FolderSelectionTests(unittest.TestCase):
 
     def tearDown(self):
         if hasattr(self,'app'):
-            self.root.update_idletasks();self.root.destroy()
+            self.root.update_idletasks()
+            for timer in self.root.tk.call('after','info'):self.root.after_cancel(timer)
+            self.root.destroy()
 
     def click(self,item,state=0):
+        self.app.folders.see(item);self.root.update_idletasks()
         box=self.app.folders.bbox(item);self.assertTrue(box)
         x,y=box[0]+10,box[1]+box[3]//2
         self.app.folders.event_generate('<ButtonPress-1>',x=x,y=y,state=state)
@@ -40,6 +43,7 @@ class FolderSelectionTests(unittest.TestCase):
         self.assertEqual(set(tree.selection()),{rows[0],rows[2]})
         self.click(rows[2],4);self.assertEqual(tree.selection(),(rows[0],))
         self.click(rows[3],1);self.assertEqual(set(tree.selection()),set(rows))
+        tree.see(rows[0]);self.root.update_idletasks()
         box=tree.bbox(rows[0]);x,y=box[0]+10,box[1]+5
         tree.event_generate('<ButtonPress-1>',x=x,y=y)
         tree.event_generate('<B1-Motion>',x=x+20,y=y-80,state=0x100)
