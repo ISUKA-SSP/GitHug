@@ -102,7 +102,10 @@ def prepare_backup(project,archive):
     before=file_identity(archive);items=[];count=0;total=0
     with zipfile.ZipFile(archive) as zipped:
         for entry in zipped.infolist():
-            name=safe_name(entry.filename[:-1] if entry.is_dir() else entry.filename)
+            # ZipInfo.filename normalizes separators on Windows and truncates NUL.
+            # Validate the original stored name before using its normalized form.
+            raw_name=entry.orig_filename
+            name=safe_name(raw_name[:-1] if entry.is_dir() else raw_name)
             mode=entry.external_attr>>16;kind=stat.S_IFMT(mode)
             if kind not in (0,stat.S_IFREG,stat.S_IFDIR) or entry.external_attr&0x400:raise RestoreError('リンクなどの特殊な項目を含むバックアップには対応していません。')
             if entry.flag_bits&1:raise RestoreError('暗号化されたバックアップには対応していません。')
