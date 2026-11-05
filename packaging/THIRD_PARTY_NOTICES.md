@@ -1,6 +1,6 @@
 # Bundled components
 
-GitHug's portable package contains the original application, a Python runtime, Tcl/Tk,
+GitTotte's portable package contains the original application, a Python runtime, Tcl/Tk,
 the PyInstaller bootloader, and the upstream MinGit distribution when enabled.
 
 - Python: https://www.python.org/ — license text is copied into `licenses`.
@@ -25,9 +25,9 @@ Exact package versions and the downloaded archive's SHA-256 are recorded in `bui
   The unmodified library source is included in `_internal/pyte` as separate,
   replaceable Python files, outside the frozen application archive. You may replace
   those files with a compatible modified version; modifying/reverse engineering
-  GitHug for debugging modifications to this library is permitted.
+  GitTotte for debugging modifications to this library is permitted.
   The license text is included in `licenses/pyte`. Application build scripts and
-  source are available at https://github.com/ISUKA-SSP/GitHug .
+  source are available at https://github.com/ISUKA-SSP/GitTotte .
 - wcwidth 0.2.13 (MIT): https://github.com/jquast/wcwidth/tree/0.2.13
   Its available license is included in `licenses/wcwidth`.
 

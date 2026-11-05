@@ -22,3 +22,7 @@ References:
 - https://support.google.com/chrome/answer/6261569
 - https://pyinstaller.org/en/stable/bootloader-building.html
 - https://pyinstaller.org/en/stable/usage.html
+
+## GitTotte 1.1.0
+
+The same verified bootloader build and product metadata approach is retained. The product is now GitTotte; settings and credential identifiers retain GitHug for compatibility. The release workflow gates publication on source tests, frozen EXE/bundled Git/terminal smoke checks and Defender folder/ZIP scans. Chrome acceptance still requires the user's download test. No signing or protection bypass is added.

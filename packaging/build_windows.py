@@ -69,6 +69,7 @@ def main():
             zipped.extractall(target)
         if not (target/'cmd'/'git.exe').is_file():raise RuntimeError('MinGitのgit.exeが見つかりません。')
     shutil.copy2(ROOT/'README.md',folder/'README.md')
+    shutil.copytree(ROOT/'docs',folder/'docs',dirs_exist_ok=True,ignore=shutil.ignore_patterns('changes','releases'))
     shutil.copy2(ROOT/'packaging'/'FIRST_START.txt',folder/'はじめに.txt')
     shutil.copy2(ROOT/'packaging'/'THIRD_PARTY_NOTICES.md',folder/'THIRD_PARTY_NOTICES.md')
     licenses=folder/'licenses';licenses.mkdir(exist_ok=True)
