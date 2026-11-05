@@ -59,7 +59,9 @@ class BackupRestoreTests(unittest.TestCase):
         for index,names in enumerate(cases):
             archive=self.archive.parent/(str(index)+'.zip')
             with zipfile.ZipFile(archive,'w') as z:
-                for name in names:z.writestr(name,b'data')
+                for name in names:z.writestr(name.replace(chr(92),'/'),b'data')
+            # ZipInfo normalizes os.sep on Windows; craft the actual archive bytes.
+            if any(chr(92) in name for name in names):archive.write_bytes(archive.read_bytes().replace(b'a/b.txt',b'a'+bytes([92])+b'b.txt'))
             with self.subTest(names=names),self.assertRaises(RestoreError):prepare_backup(self.project,archive)
         linked=self.archive.parent/'link.zip'
         with zipfile.ZipFile(linked,'w') as z:
