@@ -19,6 +19,7 @@ class Actor:
     right:float
     x:float
     direction:int=1
+    facing:int|None=None
     sitting:bool=False
     state:str='idle'
     since:float=0
@@ -26,6 +27,10 @@ class Actor:
     next_blink:float=4
     blink_until:float=0
     fall_started:float|None=None
+
+
+    def __post_init__(self):
+        if self.facing is None:self.facing=self.direction
 
 
 class MascotModel:
@@ -48,7 +53,9 @@ class MascotModel:
             actor.fall_started=self.now if now is None else now
 
     def _move(self,actor,delta):
+        previous=actor.x
         actor.x+=actor.direction*18*delta
+        if actor.x!=previous:actor.facing=actor.direction
         if actor.x>=actor.right:actor.x=actor.right;actor.direction=-1;return True
         if actor.x<=actor.left:actor.x=actor.left;actor.direction=1;return True
         return False
@@ -64,9 +71,9 @@ class MascotModel:
                 ends=(.12,.26,.44,.94,1.19,1.44)
                 if elapsed<1.44:
                     frame=next(i for i,end in enumerate(ends) if elapsed<end)
-                    output.append((actor.name,'fall',frame,actor.x,actor.direction));continue
+                    output.append((actor.name,'fall',frame,actor.x,actor.facing));continue
                 if elapsed<1.70:
-                    output.append((actor.name,'up',min(1,int((elapsed-1.44)/.13)),actor.x,actor.direction));continue
+                    output.append((actor.name,'up',min(1,int((elapsed-1.44)/.13)),actor.x,actor.facing));continue
                 actor.fall_started=None;actor.sitting=False;actor.state='idle';actor.next_action=now+8
             if now>=actor.next_blink:
                 actor.blink_until=now+.15;actor.next_blink=now+self.rng.uniform(3,7)
@@ -79,20 +86,20 @@ class MascotModel:
                         if actor.state!='busy_up':actor.state='busy_up';actor.since=now
                         elapsed=now-actor.since
                         if elapsed<.26:
-                            output.append((actor.name,'up',min(1,int(elapsed/.13)),actor.x,1));continue
+                            output.append((actor.name,'up',min(1,int(elapsed/.13)),actor.x,actor.facing));continue
                     actor.state='idle';actor.sitting=False;self._move(actor,delta)
-                    output.append((actor.name,'carry',int(now/.17)%4,actor.x,actor.direction))
+                    output.append((actor.name,'carry',int(now/.17)%4,actor.x,actor.facing))
                 else:
-                    actor.state='idle';output.append((actor.name,'idle',(6 if actor.sitting else 2)+blink,actor.x,1))
+                    actor.state='idle';output.append((actor.name,'idle',(6 if actor.sitting else 2)+blink,actor.x,actor.facing))
                 continue
             if actor.state in ('down','up'):
                 duration=.13*(3 if actor.state=='down' else 2)
                 if now-actor.since<duration:
-                    output.append((actor.name,actor.state,int((now-actor.since)/.13),actor.x,1));continue
+                    output.append((actor.name,actor.state,int((now-actor.since)/.13),actor.x,actor.facing));continue
                 actor.sitting=actor.state=='down';actor.state='idle';actor.next_action=now+self.rng.uniform(6,14)
             if actor.state=='walk':
                 ended=self._move(actor,delta)
-                output.append((actor.name,'walk',int((now-actor.since)/.16)%4,actor.x,actor.direction))
+                output.append((actor.name,'walk',int((now-actor.since)/.16)%4,actor.x,actor.facing))
                 if ended:actor.state='idle';actor.next_action=now+self.rng.uniform(6,14)
                 continue
             if now>=actor.next_action:
@@ -101,7 +108,7 @@ class MascotModel:
                 elif self.rng.random()<.5:actor.state='down'
                 else:actor.state='walk'
                 actor.next_action=now+self.rng.uniform(6,14)
-            output.append((actor.name,'idle',(4 if actor.sitting else 0)+blink,actor.x,1))
+            output.append((actor.name,'idle',(4 if actor.sitting else 0)+blink,actor.x,actor.facing))
         return output
 
 

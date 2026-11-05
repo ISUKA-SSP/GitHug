@@ -1,4 +1,19 @@
-# GitHug
+# GitTotte
+
+旧名：GitHug。Gitに「取っ手」を付ける、Windows用の操作アプリです。
+
+## 開発中のPython版
+
+このブランチは1.1.0a7です。今回はEXEを作成せず、Python版で確認します。
+
+```powershell
+python -m pip install -r requirements.txt
+python -m gittotte
+```
+
+画面上の「表示用語：操作名／Git用語」はその場で切り替わり、次回にも引き継ぎます。既存の設定・登録フォルダー・自分用メモ・保存済みAPIキーは引き続き利用できます。設定は互換性のため `%APPDATA%\GitHug` を使用します。
+
+以下のv1.0.0配布物・画像は旧名GitHugのものです。
 
 **履歴から、安心して試す。**
 
@@ -16,9 +31,9 @@ GitHubの履歴とPCのフォルダーを、ドラッグでつなぐ。説明パ
 
 ## ダウンロード
 
-**[Windows版 v1.0.0 をダウンロード](https://github.com/ISUKA-SSP/GitHug/releases/download/v1.0.0/GitHug-1.0.0-Windows-x64.zip)**
+**[Windows版 v1.0.0 をダウンロード](https://github.com/ISUKA-SSP/GitTotte/releases/download/v1.0.0/GitHug-1.0.0-Windows-x64.zip)**
 
-[配布ページ・更新内容](https://github.com/ISUKA-SSP/GitHug/releases/latest)
+[配布ページ・更新内容](https://github.com/ISUKA-SSP/GitTotte/releases/latest)
 
 Windows 11・64bit向け。Pythonのインストールは不要です。公開プロジェクトの取得に使うGitも同梱しています。
 
@@ -63,14 +78,14 @@ Windows 11・64bit向け。Pythonのインストールは不要です。公開�
 PC側でGitHubへの認証と、対象プロジェクトへの権限が必要です。
 Git for Windowsがインストールされている場合はそちらを優先し、普段の認証設定を使います。
 同梱Gitだけでは認証の準備が済んでいるとは限りません。
-ChatGPTのGitHub接続は、GitHugには引き継がれません。
+ChatGPTのGitHub接続は、GitTotteには引き継がれません。
 
 既存の枝と変更が食い違う場合は、新しい枝へ送る形を案内します。
 変更の自動統合や、競合した箇所を編集する機能はありません。
 
 ## AIによる説明（任意）
 
-Geminiを使わなくても、GitHugの基本機能は利用できます。
+Geminiを使わなくても、GitTotteの基本機能は利用できます。
 
 1. 「説明パネル」を開き、⚙から利用するモデル名とAPIキーを設定します。
 2. 履歴・ファイルを選び、「送信内容を確認」で対象を確認します。
@@ -93,7 +108,7 @@ Google側の利用条件・料金・上限が適用されます。AIの説明に
 - Windows版はコード署名を付けていません。環境によって警告が出る可能性があります。
 - v1.0.0は84件のテスト、Windows上でのEXE起動・主要画面・同梱Gitの確認、Defenderによる配布フォルダーとZIPの検査を実施しています。検査の通過は、すべての環境での動作や安全性を保証するものではありません。
 
-不具合や要望は[Issues](https://github.com/ISUKA-SSP/GitHug/issues)へ。再現手順・バージョン・エラー文を添えてください。APIキーや個人情報は載せないでください。
+不具合や要望は[Issues](https://github.com/ISUKA-SSP/GitTotte/issues)へ。再現手順・バージョン・エラー文を添えてください。APIキーや個人情報は載せないでください。
 
 ## 埋め込みPowerShell（1.1.0試用版）
 

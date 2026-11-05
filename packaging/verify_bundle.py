@@ -9,10 +9,10 @@ import tempfile
 folder=Path(sys.argv[1]).resolve()
 report=Path(sys.argv[2]).resolve() if len(sys.argv)>2 else folder.parent/'windows-smoke.json'
 report.parent.mkdir(parents=True,exist_ok=True)
-with tempfile.TemporaryDirectory(prefix='GitHug-verify-') as temporary:
+with tempfile.TemporaryDirectory(prefix='GitTotte-verify-') as temporary:
     env={**os.environ,'APPDATA':temporary,'GITHUG_PREFER_BUNDLED_GIT':'1',
          'GIT_CONFIG_NOSYSTEM':'1','GIT_CONFIG_GLOBAL':os.devnull}
-    completed=subprocess.run([str(folder/'GitHug.exe'),'--smoke-test',str(report)],cwd=folder,env=env,timeout=150)
+    completed=subprocess.run([str(folder/'GitTotte.exe'),'--smoke-test',str(report)],cwd=folder,env=env,timeout=150)
     if not report.exists():raise RuntimeError('EXEが起動確認レポートを作成しませんでした。')
     data=json.loads(report.read_text(encoding='utf-8'))
     print(json.dumps(data,ensure_ascii=True,indent=2))

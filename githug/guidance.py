@@ -44,6 +44,8 @@ class HoverHelp:
         try:
             if not widget.winfo_exists() or not widget.winfo_ismapped():return
             self.tip=tk.Toplevel(self.root);self.tip.overrideredirect(True)
+            terms=getattr(self.root,'_gittotte_terms',None)
+            if terms:text=terms.text(text)
             ttk.Label(self.tip,text=text,padding=10,wraplength=360,justify='left').pack()
             self.tip.update_idletasks()
             width,height=self.tip.winfo_reqwidth(),self.tip.winfo_reqheight()

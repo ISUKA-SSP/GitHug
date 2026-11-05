@@ -25,7 +25,7 @@ GIT_SHA256='e3bf78351fe777fba47ddee5950082f8a98bb0f02604fdc7ba3ee2cb68ffa877'
 def fetch_git(cache):
     archive=cache/('MinGit-'+GIT_VERSION+'-64-bit.zip')
     if not archive.exists() or hashlib.sha256(archive.read_bytes()).hexdigest()!=GIT_SHA256:
-        request=urllib.request.Request(GIT_URL,headers={'User-Agent':'GitHug-build'})
+        request=urllib.request.Request(GIT_URL,headers={'User-Agent':'GitTotte-build'})
         with urllib.request.urlopen(request,timeout=120) as response, archive.open('wb') as output:
             shutil.copyfileobj(response,output)
     if hashlib.sha256(archive.read_bytes()).hexdigest()!=GIT_SHA256:
@@ -40,7 +40,7 @@ def main():
     args=parser.parse_args()
     if os.name!='nt':raise SystemExit('Windows上で実行してください。GitHub Actionsも利用できます。')
     cache=ROOT/'build'/'packaging';cache.mkdir(parents=True,exist_ok=True)
-    icon=cache/'GitHug.ico';icon.write_bytes(icon_bytes())
+    icon=cache/'GitTotte.ico';icon.write_bytes(icon_bytes())
     # Keep the LGPL source replaceable without generated caches.
     pyte_source=cache/'pyte'
     if pyte_source.exists():shutil.rmtree(pyte_source)
@@ -48,15 +48,15 @@ def main():
                     ignore=shutil.ignore_patterns('__pycache__','*.pyc'))
     numbers=tuple(int(value or 0) for value in re.fullmatch(r'(\d+)\.(\d+)\.(\d+)(?:a(\d+))?',__version__).groups())
     version_file=cache/'version.txt'
-    version_file.write_text("VSVersionInfo(ffi=FixedFileInfo(filevers="+repr(numbers)+", prodvers="+repr(numbers)+", mask=0x3f, flags="+str(2 if 'a' in __version__ else 0)+", OS=0x40004, fileType=0x1, subtype=0, date=(0,0)), kids=[StringFileInfo([StringTable('040904B0', [StringStruct('CompanyName','ISUKA-SSP'), StringStruct('FileDescription','GitHug'), StringStruct('FileVersion',"+repr(__version__)+"), StringStruct('ProductName','GitHug'), StringStruct('ProductVersion',"+repr(__version__)+"), StringStruct('OriginalFilename','GitHug.exe')])]), VarFileInfo([VarStruct('Translation',[1033,1200])])])",encoding='utf-8')
+    version_file.write_text("VSVersionInfo(ffi=FixedFileInfo(filevers="+repr(numbers)+", prodvers="+repr(numbers)+", mask=0x3f, flags="+str(2 if 'a' in __version__ else 0)+", OS=0x40004, fileType=0x1, subtype=0, date=(0,0)), kids=[StringFileInfo([StringTable('040904B0', [StringStruct('CompanyName','ISUKA-SSP'), StringStruct('FileDescription','GitTotte'), StringStruct('FileVersion',"+repr(__version__)+"), StringStruct('ProductName','GitTotte'), StringStruct('ProductVersion',"+repr(__version__)+"), StringStruct('OriginalFilename','GitTotte.exe')])]), VarFileInfo([VarStruct('Translation',[1033,1200])])])",encoding='utf-8')
     subprocess.run([sys.executable,'-m','PyInstaller','--noconfirm','--clean','--onedir','--windowed',
                     '--add-data',str(ROOT/'githug'/'assets')+os.pathsep+'githug/assets',
                     '--collect-all','winpty','--hidden-import','win32com.shell.shell','--hidden-import','win32com.server.policy','--collect-all','wcwidth','--exclude-module','pyte',
                     '--add-data',str(pyte_source)+os.pathsep+'pyte',
-                    '--version-file',str(version_file),'--noupx','--name','GitHug','--icon',str(icon),'--distpath',str(ROOT/'dist'),
+                    '--version-file',str(version_file),'--noupx','--name','GitTotte','--icon',str(icon),'--distpath',str(ROOT/'dist'),
                     '--workpath',str(ROOT/'build'/'pyinstaller'),'--specpath',str(cache),
                     str(ROOT/'run_githug.py')],cwd=ROOT,check=True)
-    folder=ROOT/'dist'/'GitHug'
+    folder=ROOT/'dist'/'GitTotte'
     shutil.rmtree(folder/'_internal'/'winpty'/'tests',ignore_errors=True)
     if not args.without_git:
         archive=fetch_git(cache)
@@ -99,23 +99,23 @@ def main():
     info['bootloader']=json.loads(provenance.read_text(encoding='utf-8')) if provenance.exists() else {'compile_bootloader':False}
     (folder/'build-info.json').write_text(json.dumps(info,ensure_ascii=False,indent=2),encoding='utf-8')
     import pefile
-    pe=pefile.PE(str(folder/'GitHug.exe'))
+    pe=pefile.PE(str(folder/'GitTotte.exe'))
     strings={}
     for group in getattr(pe,'FileInfo',[]):
         for item in group:
             for table in getattr(item,'StringTable',[]):
                 strings.update({key.decode():value.decode() for key,value in table.entries.items()})
-    if strings.get('ProductName')!='GitHug' or strings.get('ProductVersion')!=__version__:
+    if strings.get('ProductName')!='GitTotte' or strings.get('ProductVersion')!=__version__:
         raise RuntimeError('Windows product metadata mismatch')
     info['windows_version_info']=strings
     info['authenticode_present']=bool(pe.OPTIONAL_HEADER.DATA_DIRECTORY[4].Size)
     (folder/'build-info.json').write_text(json.dumps(info,ensure_ascii=False,indent=2),encoding='utf-8')
     manifest={str(path.relative_to(folder)).replace('\\','/'):hashlib.sha256(path.read_bytes()).hexdigest() for path in sorted(folder.rglob('*')) if path.is_file()}
     (folder/'file-sha256.json').write_text(json.dumps(manifest,indent=2),encoding='utf-8')
-    archive=ROOT/'dist'/f'GitHug-{__version__}-Windows-x64.zip'
+    archive=ROOT/'dist'/f'GitTotte-{__version__}-Windows-x64.zip'
     with zipfile.ZipFile(archive,'w',zipfile.ZIP_DEFLATED,compresslevel=6) as zipped:
         for path in sorted(folder.rglob('*')):
-            if path.is_file():zipped.write(path,Path('GitHug')/path.relative_to(folder))
+            if path.is_file():zipped.write(path,Path('GitTotte')/path.relative_to(folder))
     (archive.with_suffix('.sha256')).write_text(hashlib.sha256(archive.read_bytes()).hexdigest()+'  '+archive.name+'\n',encoding='ascii')
     print('Built:',archive)
 

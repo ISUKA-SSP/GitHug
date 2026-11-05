@@ -25,6 +25,7 @@ class ExplanationPanel:
         self.mode=tk.StringVar(value='一つの履歴')
         self.mode_picker=ttk.Combobox(self.frame,textvariable=self.mode,values=('一つの履歴','分岐の変更'),state='readonly')
         self.mode_picker.pack(fill='x')
+        app.terms.bind_choices(self.mode_picker)
         self.base_area=ttk.Frame(self.frame)
         ttk.Label(self.base_area,text='どこからの変更を説明する？',style='Muted.TLabel').pack(anchor='w',pady=(6,0))
         self.base=tk.StringVar(value='main')
@@ -132,11 +133,12 @@ class ExplanationPanel:
             self.write(self.preview,'');self.state.set('送信前に内容を確認してください。')
 
     def update_base_visibility(self):
-        visible=self.target and self.target['kind']=='history' and self.mode.get()=='分岐の変更'
+        visible=self.target and self.target['kind']=='history' and self.app.terms.original(self.mode.get())=='分岐の変更'
         if visible:self.base_area.pack(fill='x',before=self.detail_checkbox)
         else:self.base_area.pack_forget()
 
     def invalidate(self,*args):
+        if self.app.terms.updating:return
         self.update_base_visibility()
         self.payload=None;self.send.configure(state='disabled')
         if not self.busy:self.state.set('条件を変更しました。送信内容をもう一度確認してください。')
@@ -152,7 +154,7 @@ class ExplanationPanel:
 
     def prepare_input(self):
         if not self.target:self.state.set('履歴かファイルを選択してください。');return
-        target=dict(self.target);mode=self.mode.get();base=self.base.get().strip();detail=self.detail.get()
+        target=dict(self.target);mode=self.app.terms.original(self.mode.get());base=self.base.get().strip();detail=self.detail.get()
         if target['kind']=='history' and mode=='分岐の変更' and not base:
             self.state.set('比べる作業の分岐名（例: main）を入力してください。');return
         self.prepared_target=target;self.prepared_options=(mode,base,detail);self.payload=None
@@ -187,7 +189,7 @@ class ExplanationPanel:
                 self.send.configure(state='normal' if self.payload else 'disabled');continue
             if kind=='prepare':
                 # A selection change during preparation invalidates the prepared send action.
-                if self.target!=self.prepared_target or self.prepared_options!=(self.mode.get(),self.base.get().strip(),self.detail.get()):
+                if self.target!=self.prepared_target or self.prepared_options!=(self.app.terms.original(self.mode.get()),self.base.get().strip(),self.detail.get()):
                     self.payload=None;self.state.set('選択が変わりました。もう一度送信内容を確認してください。');continue
                 self.payload=value;self.write(self.preview,value);self.tabs.select(1)
                 self.state.set(str(len(value))+'文字をGoogle Geminiへ送信します。内容を確認してください。')

@@ -2,7 +2,8 @@
 from datetime import datetime
 from pathlib import Path
 import tkinter as tk
-from tkinter import ttk, messagebox
+from tkinter import ttk
+from .terminology import messagebox
 from .publishing import inspect_push, local_base, preview_changes, publish, choose_files, selection_counts
 from .explaining import explainable, explanation_input, explain, cache_key
 
@@ -62,7 +63,9 @@ class PushUI:
                 return
         mode = tk.StringVar(value='既存の分岐へ送る' if tips else '新しい分岐として送る')
         branch = tk.StringVar(value=tips[0] if tips else 'work/' + datetime.now().strftime('%Y%m%d-%H%M%S'))
-        ttk.Combobox(target, textvariable=mode, values=('新しい分岐として送る', '既存の分岐へ送る'), state='readonly', width=22).grid(row=0, column=0, padx=(0, 8), pady=4)
+        mode_box=ttk.Combobox(target, textvariable=mode, values=('新しい分岐として送る', '既存の分岐へ送る'), state='readonly', width=28)
+        mode_box.grid(row=0,column=0,padx=(0,8),pady=4)
+        app.terms.bind_choices(mode_box)
         branch_box = ttk.Combobox(target, textvariable=branch, values=sorted(plan.branches))
         branch_box.grid(row=0, column=1, sticky='ew', pady=4)
         ttk.Label(target, text='新しい分岐は送信元の比較基準から作ります。GitHub側や過去の版へ変更を合わせる機能は未実装です。',
@@ -115,7 +118,7 @@ class PushUI:
         details = ttk.Frame(popup, padding=(12, 4))
         details.grid(row=4, column=0, sticky='ew')
         details.columnconfigure(1, weight=1)
-        ttk.Label(details, text='変更の説明').grid(row=0, column=0, sticky='w')
+        ttk.Label(details, text='変更を記録する説明').grid(row=0, column=0, sticky='w')
         description = tk.Text(details, height=3, width=1, wrap='word', undo=True)
         description.grid(row=0, column=1, columnspan=3, sticky='ew', pady=4)
         name = tk.StringVar(value=app.config.get('author_name') or plan.author_name)
@@ -148,14 +151,14 @@ class PushUI:
             if not paths or not description.get('1.0','end-1c').strip() or not branch.get().strip() or not name.get().strip() or not email.get().strip():
                 messagebox.showinfo('入力を確認', 'ファイル・分岐の名前・変更の説明・変更した人の名前とメールを確認してください。', parent=popup)
                 return
-            new = mode.get() == '新しい分岐として送る'
+            new = app.terms.original(mode.get()) == '新しい分岐として送る'
             destination = branch.get().strip()
             if not new and plan.branches.get(destination) != plan.base:
                 messagebox.showinfo('新しい分岐をおすすめします', 'この分岐には元の版と異なる更新があります。「新しい分岐として送る」を選んでください。', parent=popup)
                 return
             counts = selection_counts(plan.changes, selected)
             deletion_note = '\n削除対象はGitHubの新しい履歴から取り除きます（PC側には影響しません）。' if counts['D'] else ''
-            if not messagebox.askyesno('GitHubへ送信', f"{project.name}\n分岐: {destination}\n変更 {counts['M']} 件 ／ 追加 {counts['A']} 件 ／ 削除 {counts['D']} 件" +
+            if not messagebox.askyesno('GitHubへ送信', f"{project.name}\n{app.terms.text('分岐')}: {destination}\n変更 {counts['M']} 件 ／ 追加 {counts['A']} 件 ／ 削除 {counts['D']} 件" +
                                       deletion_note + '\n選んだ内容を記録してGitHubへ送りますか？', parent=popup):
                 return
             message = description.get('1.0','end-1c')
@@ -164,7 +167,7 @@ class PushUI:
                 popup.destroy()
                 app.config['author_name'], app.config['author_email'] = name_value, email_value
                 app.save()
-                messagebox.showinfo('GitHubへ送りました', '分岐: ' + result['branch'] + '\n履歴: ' + result['sha'][:12] + '\n' + result['warning'])
+                messagebox.showinfo('GitHubへ送りました', app.terms.text('分岐')+': ' + result['branch'] + '\n履歴: ' + result['sha'][:12] + '\n' + result['warning'])
                 app.refresh()
             app.run('記録を作ってGitHubへ送っています…',
                     lambda: publish(project, plan, paths, destination, new, message, name_value, email_value,

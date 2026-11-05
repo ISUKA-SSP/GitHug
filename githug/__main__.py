@@ -7,7 +7,7 @@ import subprocess
 import threading
 import time
 import tkinter as tk
-from tkinter import ttk, filedialog, messagebox, simpledialog
+from tkinter import ttk, filedialog, simpledialog
 from .core import Project, ComparisonCancelled
 from .console_panel import ConsolePanel
 from .folder_removal import checked_removal, identity, recycle_registered, hide_missing
@@ -29,12 +29,13 @@ from .drag_hint import DragHint
 from .branding import attach_logo
 from .mascot import MascotView, operation_pose
 from .guidance import HoverHelp, register_buttons
+from .terminology import Terminology, messagebox
 
 class App:
     def __init__(self, window):
         self.window = window
         self.style = apply_dark_theme(window)
-        window.title(f'GitHug {__version__} — 履歴から、安心して試す')
+        window.title(f'GitTotte {__version__} — 履歴から、安心して試す')
         window.geometry('1360x900')
         window.minsize(1100, 800)
         logo = attach_logo(window)
@@ -43,6 +44,7 @@ class App:
             self.config = json.loads(self.config_path.read_text(encoding='utf-8'))
         except (FileNotFoundError, ValueError):
             self.config = {'root': '', 'projects': []}
+        self.terms = Terminology(window,self.config.get('terminology','operations'),self.change_terminology)
         self.tooltips = HoverHelp(window, self.config.get('hover_help', True))
         self.project = None
         self.notes = None
@@ -64,7 +66,7 @@ class App:
         ttk.Label(appbar, image=logo, style='AppbarMuted.TLabel').pack(side='left', padx=(0,12))
         brand = ttk.Frame(appbar, style='Appbar.TFrame')
         brand.pack(side='left')
-        ttk.Label(brand, text='GitHug', style='Brand.TLabel').pack(anchor='w')
+        ttk.Label(brand, text='GitTotte', style='Brand.TLabel').pack(anchor='w')
         ttk.Label(brand, text='履歴から、安心して試す', style='BrandSubtitle.TLabel').pack(anchor='w')
         ttk.Label(appbar, text='v' + __version__, style='Badge.TLabel').pack(side='left', padx=16)
         # Use the supplied illustration unchanged; native Tk scaling needs no imaging dependency.
@@ -83,9 +85,14 @@ class App:
         toolbar.pack(fill='x', padx=16, pady=(0,12))
         ttk.Button(toolbar, text='GitHubの履歴を更新', command=self.refresh, style='Primary.TButton').pack(side='left', padx=4)
         ttk.Button(toolbar, text='＋ プロジェクト', command=self.add).pack(side='left', padx=4)
-        ttk.Button(toolbar,text='PowerShell',command=self.toggle_console).pack(side='left',padx=4)
         ttk.Button(toolbar, text='更新前のバックアップ', command=self.backups_dialog).pack(side='left', padx=4)
         ttk.Button(toolbar, text='コピー・履歴の保存先', command=self.choose_root, style='Quiet.TButton').pack(side='right', padx=4)
+        language=ttk.Frame(toolbar);language.pack(side='right',padx=8)
+        ttk.Label(language,text='表示用語：').pack(side='left')
+        self.term_mode=tk.StringVar(value=self.terms.mode)
+        for title,value in (('操作名','operations'),('Git用語','git')):
+            ttk.Radiobutton(language,text=title,value=value,variable=self.term_mode,
+                            command=lambda:self.terms.set_mode(self.term_mode.get())).pack(side='left',padx=3)
         self.status = tk.StringVar(value='「＋ プロジェクト」からGitHubのURLを追加して始めましょう。')
         footer=ttk.Frame(window,padding=(12,7),style='Card.TFrame')
         footer.pack(fill='x',side='bottom',padx=16,pady=(8,12))
@@ -171,6 +178,8 @@ class App:
         self.history_query.trace_add('write', lambda *_: self.render_history())
         self.folder_query.trace_add('write', lambda *_: self.render_folders())
         register_buttons(window, self.tooltips)
+        self.terms.bind_variable(self.action_guide)
+        self.terms.refresh()
         for header in (self.history_header, self.folder_header):
             self.tooltips.add(header.entry, '一覧を絞り込みます。自分用メモも検索できます。×またはEscで解除します。')
             self.tooltips.add(header.clear_button, '検索を解除して一覧へ戻します。')
@@ -182,6 +191,11 @@ class App:
         self.sections.bind('<Configure>', self.initialize_sections, add='+')
         window.after(150, lambda: self.main_split.sashpos(0, 245))
         window.after(100, self.poll)
+
+    def change_terminology(self,mode):
+        self.config['terminology']=mode
+        self.save()
+        if hasattr(self,'tooltips'):self.tooltips.hide()
 
     def set_action_guide(self, kind):
         self.guide_kind=kind
@@ -196,7 +210,7 @@ class App:
         existing=getattr(self,'settings_window',None)
         if existing is not None and existing.winfo_exists():existing.lift();return existing
         popup=tk.Toplevel(self.window);self.settings_window=popup
-        popup.title('GitHug — 表示・操作の設定');popup.geometry('640x410');popup.minsize(540,390)
+        popup.title('GitTotte — 表示・操作の設定');popup.geometry('640x410');popup.minsize(540,390)
         area=ttk.Frame(popup,padding=18);area.pack(fill='both',expand=True)
         ttk.Label(area,text='操作を助ける表示',style='Heading.TLabel').pack(anchor='w',pady=(0,12))
         hover=tk.BooleanVar(value=self.config.get('hover_help',True))
@@ -250,10 +264,10 @@ class App:
         from .platform_support import git_executable
         popup=tk.Toplevel(self.window)
         self.guide_window=popup
-        popup.title('GitHug — 使い方・環境')
+        popup.title('GitTotte — 使い方・環境')
         popup.geometry('760x540')
         popup.minsize(600,450)
-        ttk.Label(popup,text='GitHug  '+__version__,style='Heading.TLabel',padding=16).pack(anchor='w')
+        ttk.Label(popup,text='GitTotte  '+__version__,style='Heading.TLabel',padding=16).pack(anchor='w')
         text=(
             '1  プロジェクトを追加：GitHubのURLを登録します。\n'
             '2  履歴からPCへドラッグ：別フォルダーへのコピーや、確認付きの更新。\n'
@@ -262,7 +276,7 @@ class App:
             '自分用メモ・VS Code・PowerShellは、行の右クリックから開けます。\n'
             'PowerShellは下側のパネルで操作します。右の欄に複数行のコマンド、下の欄に途中の回答を入力できます。\n'
             '✖はパネルを隠すだけです。「処理を中断」はCtrl+C、「終了」はPowerShellとその処理を終了します。\n'
-            '同じ場所への更新は、GitHugのコピーフォルダーか、明示的に有効にした作業用だけです。\n\n'
+            '同じ場所への更新は、GitTotteのコピーフォルダーか、明示的に有効にした作業用だけです。\n\n'
             '公開プロジェクトの取得にはログイン不要です。送信・非公開プロジェクトにはPC側のGitHub認証が必要です。\n'
             'Geminiは任意。説明を頼むボタンを押すまで呼び出しません。\n'
             'APIキーは接続設定で任意保存できます。保存先はWindowsの資格情報マネージャーです。\n'
@@ -458,7 +472,7 @@ class App:
         if self.config['projects']:
             messagebox.showinfo('保存先', '登録済みプロジェクトの保存先は維持します。\n' + self.config['root'])
             return
-        folder = filedialog.askdirectory(title='GitHugの保存先を選択')
+        folder = filedialog.askdirectory(title='GitTotteの保存先を選択')
         if folder:
             self.config['root'] = folder
             self.save()
@@ -591,6 +605,7 @@ class App:
         menu.add_command(label='作業フォルダーと比較', command=self.compare)
         menu.add_command(label='自分用メモを編集', command=self.edit_history_note)
         menu.add_command(label='選んだフォルダーをこの版に更新', command=self.update_selected)
+        self.terms.refresh(menu)
         menu.tk_popup(event.x_root, event.y_root)
 
     def edit_history_note(self):
@@ -652,7 +667,7 @@ class App:
         if not executable or not Path(executable).is_file():
             executable = find_vscode()
         if not executable:
-            if not messagebox.askyesno('VS Codeが見つかりません', 'VS Codeの実行ファイル（Code.exe）を選びますか？\nインストールしていない場合もGitHugは引き続き使えます。'):
+            if not messagebox.askyesno('VS Codeが見つかりません', 'VS Codeの実行ファイル（Code.exe）を選びますか？\nインストールしていない場合もGitTotteは引き続き使えます。'):
                 return
             executable = filedialog.askopenfilename(title='VS Codeの実行ファイルを選択',
                          filetypes=[('VS Code', 'Code.exe'), ('実行ファイル', '*.exe')])
@@ -1152,6 +1167,7 @@ class App:
         else:
             menu.add_command(label='フォルダーをごみ箱へ移動',command=self.recycle_selected_folder,state='normal' if state=='利用できます' else 'disabled')
         try:
+            self.terms.refresh(menu)
             menu.tk_popup(event.x_root, event.y_root)
         finally:
             menu.grab_release()
@@ -1171,7 +1187,7 @@ class App:
     def close_app(self):
         if self.console.active:
             if not messagebox.askyesno('PowerShellも終了しますか？',
-                'PowerShellと、この画面から起動した処理を終了してGitHugを閉じますか？',parent=self.window):return
+                'PowerShellと、この画面から起動した処理を終了してGitTotteを閉じますか？',parent=self.window):return
             self.console.closing=True
             self.console.session.stop()
             self.status.set('PowerShellの終了を待っています…')

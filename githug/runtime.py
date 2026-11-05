@@ -13,7 +13,7 @@ from .platform_support import enable_dpi_awareness, git_executable
 
 
 def launch(app_class, argv=None):
-    parser=argparse.ArgumentParser(prog='GitHug')
+    parser=argparse.ArgumentParser(prog='GitTotte')
     parser.add_argument('--version',action='store_true')
     parser.add_argument('--smoke-test',metavar='REPORT')
     args=parser.parse_args(argv)
@@ -32,7 +32,7 @@ def launch(app_class, argv=None):
             root.report_callback_exception=lambda kind,value,tb:callback_errors.append(str(value))
         root._githug_smoke=bool(args.smoke_test)
         if args.smoke_test:
-            smoke_config=tempfile.TemporaryDirectory(prefix='GitHug-smoke-settings-')
+            smoke_config=tempfile.TemporaryDirectory(prefix='GitTotte-smoke-settings-')
             root._githug_smoke_dir=smoke_config.name
         app=app_class(root)
         if args.smoke_test:
@@ -43,10 +43,10 @@ def launch(app_class, argv=None):
                     'mascot_size':[app.mascot_image.width(),app.mascot_image.height()]}
             from .core import Project
             from .notes import Notes
-            with tempfile.TemporaryDirectory(prefix='GitHug-smoke-') as temporary:
+            with tempfile.TemporaryDirectory(prefix='GitTotte-smoke-') as temporary:
                 directory=Path(temporary)
                 git('init','-b','main',directory/'repo')
-                git('config','user.name','GitHug smoke',cwd=directory/'repo')
+                git('config','user.name','GitTotte smoke',cwd=directory/'repo')
                 git('config','user.email','smoke@example.invalid',cwd=directory/'repo')
                 (directory/'repo'/'file.txt').write_text('smoke test',encoding='utf-8')
                 git('add','.',cwd=directory/'repo')
@@ -159,7 +159,7 @@ def launch(app_class, argv=None):
                     if callback_errors:raise RuntimeError('PowerShellのGUI操作に失敗しました: '+str(callback_errors))
                     from .folder_removal import recycle_registered, identity, hide_missing
                     from .updating import atomic_json
-                    probe=directory/'GitHug-recycle-smoke';probe.mkdir()
+                    probe=directory/'GitTotte-recycle-smoke';probe.mkdir()
                     (probe/'日本語.txt').write_text('recoverable',encoding='utf-8')
                     atomic_json(app.project.base/'records'/'recycle-smoke.json',{'folder':str(probe),'sha':ids[0],'kind':'snapshot','created':'2026-11-04T12:00:00'})
                     destination=recycle_registered(app.project,probe,identity(probe))
@@ -183,7 +183,7 @@ def launch(app_class, argv=None):
         if args.smoke_test:
             Path(args.smoke_test).write_text(json.dumps({'version':__version__,'gui_initialized':False,'error':traceback.format_exc()},ensure_ascii=False,indent=2),encoding='utf-8')
         else:
-            try:messagebox.showerror('GitHugを起動できませんでした','起動記録を保存しました。\n'+str(path),parent=root)
+            try:messagebox.showerror('GitTotteを起動できませんでした','起動記録を保存しました。\n'+str(path),parent=root)
             except Exception:pass
         if root:
             try:root.destroy()
