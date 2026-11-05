@@ -70,6 +70,17 @@ def apply_dark_theme(window):
     style.configure('TButton', background='#333333', foreground=TEXT, padding=(12, 7), relief='flat', borderwidth=1)
     style.map('TButton', background=[('pressed', ACCENT), ('active', '#414141')],
               foreground=[('disabled', '#707986')])
+    # clam has separate state maps for menu buttons and radio buttons.
+    # Without overrides, hovering inherits its light background with our light text.
+    style.configure('TMenubutton', background='#333333', foreground=TEXT, arrowcolor=TEXT,
+                    padding=(12,7), relief='flat', borderwidth=1)
+    style.map('TMenubutton', background=[('disabled',PANEL),('pressed',ACCENT),('active','#414141')],
+              foreground=[('disabled',MUTED),('!disabled',TEXT)],
+              arrowcolor=[('disabled',MUTED),('!disabled',TEXT)])
+    style.configure('TRadiobutton',background=PANEL,foreground=TEXT,indicatorbackground=FIELD,padding=4)
+    style.map('TRadiobutton',background=[('active',PANEL)],
+              foreground=[('disabled',MUTED),('!disabled',TEXT)],
+              indicatorbackground=[('disabled',BORDER),('selected',ACCENT),('active','#414141'),('!disabled',FIELD)])
     style.configure('Primary.TButton', background='#246a73', foreground='#f3fffe', padding=(14,7), relief='flat')
     style.map('Primary.TButton', background=[('pressed','#1c5864'),('active','#2c8390'),('disabled','#363636')], foreground=[('disabled',MUTED)])
     style.configure('Quiet.TButton', background=PANEL, foreground=MUTED, padding=(10,7), relief='flat')
@@ -81,13 +92,16 @@ def apply_dark_theme(window):
     style.map('TEntry', fieldbackground=[('readonly', PANEL)],
               selectbackground=[('!disabled', ACCENT)], selectforeground=[('!disabled', '#ffffff')])
     style.configure('TCombobox', fieldbackground=FIELD, background=PANEL, foreground=TEXT, arrowcolor=TEXT, padding=5)
-    style.map('TCombobox', fieldbackground=[('readonly', FIELD)], foreground=[('readonly', TEXT)],
+    style.map('TCombobox', background=[('disabled',PANEL),('pressed',ACCENT),('active','#414141'),('readonly',PANEL)],
+              fieldbackground=[('disabled',PANEL),('readonly', FIELD)],
+              foreground=[('disabled',MUTED),('!disabled', TEXT)],
+              arrowcolor=[('disabled',MUTED),('!disabled',TEXT)],
               selectbackground=[('readonly', ACCENT)], selectforeground=[('readonly', '#ffffff')])
     style.configure('Treeview', background=FIELD, fieldbackground=FIELD, foreground=TEXT,
                     rowheight=30, borderwidth=0)
     style.map('Treeview', background=[('selected', ACCENT)], foreground=[('selected', '#ffffff')])
     style.configure('Treeview.Heading', background='#303030', foreground='#cccccc', padding=(10, 8), relief='flat')
-    style.map('Treeview.Heading', background=[('active', '#414141')])
+    style.map('Treeview.Heading', background=[('pressed', ACCENT),('active', '#414141')],foreground=[('!disabled',TEXT)])
     style.configure('TPanedwindow', background=BORDER, sashwidth=8)
     for direction in ('Vertical', 'Horizontal'):
         style.configure(direction + '.TScrollbar', background='#434f5e', troughcolor=BG,
