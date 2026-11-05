@@ -3,7 +3,7 @@ from pathlib import Path
 import tkinter as tk
 from tkinter import ttk
 from .core import git
-from .local_records import records,record_changes,send_record
+from .local_records import records,record_changes,send_record,send_preview
 from .listing import date_value
 from .publishing import PushPlan,destination_expected
 from .terminology import messagebox
@@ -64,9 +64,7 @@ def send_dialog(app,project,record,parent,reload):
             # Only ancestral destinations can be advanced; divergent changes are never overwritten.
             plan=PushPlan(Path(record['folder']),record['commit'],[],branches,'','',Path(record['_repo']))
             destination_expected(project,plan,destination,is_new)
-            commits=git('log','--oneline',baseline+'..'+record['commit'],cwd=record['_repo'])
-            diff=git('diff','--no-ext-diff','--no-textconv',baseline,record['commit'],'--',cwd=record['_repo'])
-            return commits+'\n'+diff
+            return send_preview(record,baseline)
         def confirmed(text):
             if not review(popup,'GitHubへ送る記録を確認',project.url+'\n送信先：'+destination+'\n\n'+text+'\n\nこの内容をGitHubへ送りますか？',confirm=True):return
             def done(result):

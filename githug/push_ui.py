@@ -201,7 +201,7 @@ class PushUI:
                 baseline=parent.get('root_base',plan.base) if new else plan.branches.get(destination)
                 if not baseline:messagebox.showinfo('送信先を確認','送信先を選び直してください。',parent=popup);return
                 def confirm_all(data):
-                    text='送信先：'+destination+'\n以前PCに記録した内容も含め、以下の変更を送ります。\n\n'+data['summary']+'\n'+data['patch']+'\n\nGitHubへ送信しますか？'
+                    text='送信先：'+destination+'\n以前PCに記録した内容も含め、以下の変更を送ります。後で削除した内容も履歴に残っていれば送信されます。\n\n'+data.get('history','')+'\n'+data['summary']+'\n'+data['patch']+'\n\nGitHubへ送信しますか？'
                     if review(popup,'送信する全ての変更を確認',text,confirm=True):execute()
                 app.run('送信する全ての変更を確認しています…',lambda:preview_changes(project,plan,paths,baseline),confirm_all)
             else:

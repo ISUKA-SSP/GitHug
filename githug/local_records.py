@@ -91,6 +91,12 @@ def record_changes(record):
     return git('show','--format=fuller','--stat','--patch','--no-ext-diff','--no-textconv',record['commit'],'--',cwd=record['_repo'])
 
 
+def send_preview(record,baseline):
+    history=git('log','--reverse','--format=fuller','--stat','--patch','--no-ext-diff','--no-textconv',baseline+'..'+record['commit'],cwd=record['_repo'])
+    diff=git('diff','--no-ext-diff','--no-textconv',baseline,record['commit'],'--',cwd=record['_repo'])
+    return '送信に含まれる記録（後で削除した内容も、履歴に残っていれば含まれます）\n\n'+history+'\n\n最終状態の差分\n'+diff
+
+
 def send_record(project,record,branch,is_new,known_branches,progress=None):
     from .publishing import PushPlan,destination_expected,remote_head
     plan=PushPlan(Path(record['folder']),record['commit'],[],known_branches,'','',Path(record['_repo']))

@@ -235,7 +235,8 @@ def preview_changes(project, plan, paths, comparison_base=None):
         selected = prepare_selected(project, plan, paths, folder)
         summary = git('diff', '--cached', '--numstat', '--no-renames', comparison_base or plan.base, '--', cwd=folder)
         patch = git('diff', '--cached', '--no-ext-diff', '--no-textconv', '--no-renames', comparison_base or plan.base, '--', cwd=folder)
-    return {'summary': summary, 'patch': patch, 'files': [change.path for change in selected]}
+        history=git('log','--reverse','--format=fuller','--stat','--patch','--no-ext-diff','--no-textconv',comparison_base+'..'+plan.base,cwd=folder) if comparison_base else ''
+    return {'summary': summary, 'patch': patch, 'history':history, 'files': [change.path for change in selected]}
 
 
 def remote_head(project, branch):

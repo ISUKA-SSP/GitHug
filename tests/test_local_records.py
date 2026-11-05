@@ -96,6 +96,19 @@ class LocalRecordTests(unittest.TestCase):
         self.assertEqual(remote_head(self.project,'main'),self.base)
         self.assertEqual(records(self.project)[0]['commit'],record['commit'])
 
+    def test_send_review_includes_deleted_content_in_intermediate_commits(self):
+        from githug.local_records import send_preview
+        (self.folder/'.env').write_text('LOCAL_ONLY_SECRET=example\n')
+        first=self.save('private checkpoint',('code.py','.env'))
+        (self.folder/'.env').unlink()
+        second=self.save('remove config',('.env',))
+        net=git('diff',self.base,second['commit'],'--',cwd=second['_repo'])
+        self.assertNotIn('LOCAL_ONLY_SECRET',net)
+        self.assertIn('LOCAL_ONLY_SECRET',send_preview(second,self.base))
+        (self.folder/'other.txt').write_text('more work\n')
+        plan=inspect_push(self.project,self.folder)
+        self.assertIn('LOCAL_ONLY_SECRET',preview_changes(self.project,plan,['other.txt'],self.base)['history'])
+
 class LocalRecordUiTests(unittest.TestCase):
     def test_local_entry_does_not_refresh_remote(self):
         from types import SimpleNamespace
