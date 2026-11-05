@@ -2,7 +2,7 @@
 import tkinter as tk
 from tkinter import ttk
 import webbrowser
-from .route_review import routes,default_routes,compare_routes,file_patch,checked_proposal_url
+from .route_review import routes,default_routes,compare_routes,file_patch,checked_proposal_url,RoutesChanged
 from .terminology import messagebox
 
 class RouteReview:
@@ -65,15 +65,22 @@ class RouteReview:
     def compare(self):
         if self.app.busy or not self.alive():return
         self.invalidate();generation=self.generation;base,head=self.base.get(),self.head.get()
+        if base==head:
+            self.state.set('取り込み先と取り込み元には、異なる作業ルートを選んでください。');return
         self.state.set('変更を比較しています…')
-        def done(plan):
+        def task():
+            try:return compare_routes(self.project,base,head),None
+            except (OSError,ValueError,RuntimeError) as exc:return None,str(exc)
+        def done(result):
             if not self.alive() or generation!=self.generation:return
+            plan,error=result
+            if error:self.state.set(error);return
             self.plan=plan;self.state.set(plan.head+' → '+plan.base+'\n'+plan.summary)
             self.write('取り込み元だけにある履歴\n\n'+plan.commits)
             for index,(kind,path) in enumerate(plan.files):
                 self.files.insert('','end',iid=str(index),values=({'A':'追加','M':'変更','D':'削除'}.get(kind,kind),path))
             self.propose.configure(state='normal' if plan.can_propose else 'disabled')
-        self.app.run('作業ルートを比較しています…',lambda:compare_routes(self.project,base,head),done)
+        self.app.run('作業ルートを比較しています…',task,done)
 
     def refresh(self):
         if self.app.busy or not self.alive():return
@@ -96,22 +103,30 @@ class RouteReview:
         if self.app.busy:return
         plan=self.plan;path=self.files.item(selected[0],'values')[1]
         self.write('選んだファイルの差分を確認しています…')
-        def done(text):
+        def task():
+            try:return file_patch(self.project,plan,path),None
+            except (OSError,ValueError,RuntimeError) as exc:return None,str(exc)
+        def done(result):
             if not self.alive() or self.plan is not plan:return
             items=self.files.selection()
             if not items:return
             if self.files.item(items[0],'values')[1]!=path:self.load_file();return
-            self.write(path+'\n\n'+text)
-        self.app.run('ファイルの違いを確認しています…',lambda:file_patch(self.project,plan,path),done)
+            text,error=result
+            self.write(path+'\n\n'+('差分を表示できませんでした。\n'+error if error else text))
+        self.app.run('ファイルの違いを確認しています…',task,done)
 
     def open_proposal(self):
         if self.app.busy or not self.plan or not self.plan.can_propose:return
         plan=self.plan;generation=self.generation
         def task():
             self.project.refresh()
-            return checked_proposal_url(self.project,plan)
-        def done(url):
+            try:return checked_proposal_url(self.project,plan),None
+            except RoutesChanged as exc:return None,str(exc)
+        def done(result):
             if not self.alive() or self.plan is not plan or generation!=self.generation:return
+            url,error=result
+            if error:
+                self.invalidate();self.state.set(error);return
             text=plan.head+' → '+plan.base+'\n\nGitHubをブラウザーで開きます。作成前に送信元・送信先と差分をもう一度確認してください。\nブラウザーには、その時点のGitHubの内容が表示されます。\n\nこの操作では提案の送信や合流は確定しません。進みますか？'
             if not messagebox.askyesno('GitHubで取り込み提案へ進む',text,parent=self.window,default='no'):return
             try:opened=webbrowser.open(url)

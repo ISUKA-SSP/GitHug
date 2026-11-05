@@ -39,9 +39,16 @@ class RouteUiTests(unittest.TestCase):
                 with patch('githug.route_review_ui.messagebox.askyesno',return_value=True),patch('githug.route_review_ui.webbrowser.open',return_value=True) as browser:
                     view.open_proposal();wait();browser.assert_called_once_with('https://github.com/example/test/compare/main...feature%2Fgui?quick_pull=1')
                 self.assertIn('自動判定しません',view.state.get())
+                plan=view.plan
+                git('update-ref','refs/heads/feature/gui',plan.base_sha,cwd=project.cache)
+                with patch('githug.route_review_ui.webbrowser.open') as browser:
+                    view.open_proposal();wait();browser.assert_not_called()
+                self.assertIsNone(view.plan);self.assertIn('disabled',view.propose.state());self.assertIn('もう一度比較',view.state.get())
+                git('update-ref','refs/heads/feature/gui',plan.head_sha,cwd=project.cache)
                 # An in-flight result must not re-enable a proposal for a previous selection.
                 view.compare();view.head.set('main');wait()
                 self.assertIsNone(view.plan);self.assertIn('disabled',view.propose.state())
+                view.compare();self.assertIn('異なる作業ルート',view.state.get());self.assertFalse(app.busy)
                 self.assertFalse(errors)
             finally:
                 for timer in root.tk.call('after','info'):root.tk.call('after','cancel',timer)
