@@ -72,7 +72,7 @@ class Terminology:
         if value!=current:setter(value)
 
     def _walk(self,widget):
-        if isinstance(widget,(ttk.Label,ttk.Button,ttk.Checkbutton,ttk.Radiobutton,ttk.LabelFrame)):
+        if isinstance(widget,(ttk.Label,ttk.Button,ttk.Menubutton,ttk.Checkbutton,ttk.Radiobutton,ttk.LabelFrame)):
             # Dynamic labels can contain commit messages, paths, or user notes.
             if 'textvariable' not in widget.keys() or not str(widget.cget('textvariable')):
                 self._display(widget,'text',str(widget.cget('text')),lambda value:widget.configure(text=value))

@@ -16,6 +16,7 @@ class TerminologyTests(unittest.TestCase):
 
     def test_switch_preserves_inputs_selection_and_data(self):
         button=ttk.Button(self.root,text='記録してGitHubへ送る')
+        menu_button=ttk.Menubutton(self.root,text='比べる・取り込む')
         copy=ttk.Button(self.root,text='この時点のファイルをPCへコピー')
         entry=ttk.Entry(self.root);entry.insert(0,'分岐の変更');entry.icursor(2);entry.selection_range(0,2)
         output=tk.Text(self.root);output.insert('1.0','GitHubの履歴を更新\nLLMの回答・自分用メモ')
@@ -30,6 +31,7 @@ class TerminologyTests(unittest.TestCase):
             self.assertEqual(output.get('1.0','end-1c'),'GitHubの履歴を更新\nLLMの回答・自分用メモ')
             self.assertEqual(copy.cget('text'),'この時点のファイルをPCへコピー')
         self.assertEqual(button.cget('text'),'コミットしてプッシュ')
+        self.assertEqual(menu_button.cget('text'),'比較・プルリクエスト')
         self.assertEqual(self.saved,['git','operations','git'])
 
     def test_choice_uses_same_semantics_after_repeated_switch(self):

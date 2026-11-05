@@ -13,6 +13,7 @@ from .console_panel import ConsolePanel
 from .folder_removal import checked_removal, identity, recycle_registered, hide_missing, folder_key
 from .folder_batch_ui import remove_selected
 from .local_records_ui import show_records
+from .route_review_ui import open_route_review
 from . import __version__
 from .listing import date_value, visible_rows
 from .theme import apply_dark_theme
@@ -152,7 +153,12 @@ class App:
         controls = ttk.Frame(history_tab)
         controls.grid(row=4, column=0, sticky='ew')
         ttk.Button(controls, text='この時点のファイルをPCへコピー', command=self.reproduce, style='Primary.TButton').pack(side='left', padx=4)
-        ttk.Button(controls, text='作業フォルダーと比較', command=self.compare).pack(side='left', padx=4)
+        compare_menu=ttk.Menubutton(controls,text='比べる・取り込む')
+        comparisons=tk.Menu(compare_menu,tearoff=False)
+        comparisons.add_command(label='作業フォルダーと比較',command=self.compare)
+        comparisons.add_command(label='別の作業ルートと比較・取り込み提案',command=lambda:open_route_review(self))
+        compare_menu.configure(menu=comparisons);compare_menu.pack(side='left',padx=4)
+        self.tooltips.add(compare_menu,'作業フォルダーとの比較、またはGitHub上の作業ルート同士の比較・取り込み提案に進みます。')
         folders = ttk.Frame(self.sections, padding=12, style='Card.TFrame')
         folders.columnconfigure(0, weight=1)
         folders.rowconfigure(1, weight=1, minsize=70)
@@ -626,6 +632,7 @@ class App:
         menu = tk.Menu(self.window, tearoff=False)
         menu.add_command(label='この時点のファイルをPCへコピー', command=self.reproduce)
         menu.add_command(label='作業フォルダーと比較', command=self.compare)
+        menu.add_command(label='別の作業ルートと比較・取り込み提案',command=lambda:open_route_review(self))
         menu.add_command(label='自分用メモを編集', command=self.edit_history_note)
         menu.add_command(label='選んだフォルダーをこの版に更新', command=self.update_selected)
         self.terms.refresh(menu)
