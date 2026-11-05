@@ -37,7 +37,7 @@ def checked_removal(project,folder,projects=()):
         roots=[base,base/'snapshots']
         if any(path==root or path in root.parents for root in roots):
             raise RemovalError('プロジェクト全体やコピーの保存先全体は削除できません。')
-        for name in ('history.git','records','backups','updates'):
+        for name in ('history.git','records','backups','updates','local-records','outbox'):
             root=base/name
             if path==root or root in path.parents or path in root.parents:
                 raise RemovalError('GitHugの管理用フォルダーは削除できません。')

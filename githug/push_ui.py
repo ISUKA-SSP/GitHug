@@ -1,10 +1,13 @@
 """UI for reviewed GitHub sends and opt-in AI explanations."""
+import json
 from datetime import datetime
 from pathlib import Path
 import tkinter as tk
 from tkinter import ttk
 from .terminology import messagebox
 from .publishing import inspect_push, local_base, preview_changes, publish, choose_files, selection_counts
+from .folder_batch_ui import review
+from .local_records import save_local,latest_for_folder
 from .explaining import explainable, explanation_input, explain, cache_key
 
 
@@ -13,7 +16,7 @@ class PushUI:
         self.app = app
         self.responses = {}
 
-    def begin(self, folder, dropped_sha=None):
+    def begin(self, folder, dropped_sha=None, local_only=False):
         app = self.app
         if app.busy or not app.project: return
         project = app.project
@@ -23,7 +26,7 @@ class PushUI:
             return
         # Unknown folders require an explicit comparison base, not a guess at deletions.
         fallback = None
-        if not local_base(project, folder):
+        if not local_base(project, folder) and not latest_for_folder(project,folder):
             selection = app.history.selection()
             fallback = dropped_sha or (selection[0] if selection else None)
             if not fallback:
@@ -32,30 +35,37 @@ class PushUI:
             if not messagebox.askyesno('比較する基準を確認', 'このフォルダーの作成元の版が分かりません。選択した履歴 ' + fallback[:8] +
                                        ' を基準に、変更・追加・削除を調べますか？\n送信前に対象ファイルを選べます。'):
                 return
+        if local_only and not project.cache.exists():
+            messagebox.showinfo('履歴を取得してください','初回だけGitHubの履歴を取得してから、PCへの記録を作成してください。');return
         def task():
-            project.refresh()
+            if not local_only:project.refresh()
             return inspect_push(project, folder, fallback, lambda note: setattr(app, 'operation_note', note))
-        app.run('送信する変更を確認しています…', task, lambda plan: self.dialog(project, plan, dropped_sha))
+        app.run('送信する変更を確認しています…', task, lambda plan: self.dialog(project, plan, dropped_sha,local_only))
 
-    def dialog(self, project, plan, dropped_sha):
+    def dialog(self, project, plan, dropped_sha,local_only=False):
         app = self.app
+        if not plan.changes and plan.repository is not None:
+            from .local_records_ui import show_records
+            messagebox.showinfo('手元の内容は記録済みです','手元の内容は直前のPCの記録と同じです。保存済みの記録からGitHubへ送信できます。')
+            show_records(app);return
         if not plan.changes:
             messagebox.showinfo('送信する変更はありません', '基準の履歴と比べて、送信対象になる変更がありません。')
             return
         popup = tk.Toplevel(app.window)
-        popup.title('変更を確認してGitHubへ送る')
+        popup.title('PCに記録だけ残す' if local_only else '変更を記録する／GitHubへ送る')
         popup.geometry('1040x820')
         popup.minsize(860, 740)
         popup.transient(app.window)
         popup.columnconfigure(0, weight=1)
         popup.rowconfigure(2, weight=1)
-        ttk.Label(popup, text='送信元: ' + str(plan.folder) + '\n送信先: ' + project.url.removesuffix('.git') +
+        ttk.Label(popup, text='送信元: ' + str(plan.folder) + ('\n記録先: このPC（GitHubへは送信しません）' if local_only else '\n送信先: ' + project.url.removesuffix('.git')) +
                   ' ／ 比較元 ' + plan.base[:8], wraplength=820, padding=12).grid(row=0, column=0, sticky='ew')
         target = ttk.Frame(popup, padding=(12, 0))
         target.grid(row=1, column=0, sticky='ew')
         target.columnconfigure(1, weight=1)
+        if local_only:target.grid_remove()
         tips = [name for name, sha in plan.branches.items() if sha == dropped_sha]
-        if dropped_sha and not tips and dropped_sha != plan.base:
+        if not local_only and dropped_sha and not tips and dropped_sha != plan.base:
             if not messagebox.askyesno('新しい分岐の基準を確認',
                     '指定した過去の履歴へ変更を合わせる機能は未対応です。\n送信元の基準 ' + plan.base[:8] +
                     ' から新しい分岐を作る確認を続けますか？', parent=popup):
@@ -127,10 +137,12 @@ class PushUI:
         ttk.Entry(details, textvariable=name).grid(row=1, column=1, sticky='ew', padx=4)
         ttk.Label(details, text='メール').grid(row=1, column=2)
         ttk.Entry(details, textvariable=email, width=30).grid(row=1, column=3, sticky='ew', padx=4)
-        ttk.Label(details, text='名前とメールはGitHubの履歴に記録されます。手元のコードとGitの履歴は書き換えません。',
+        ttk.Label(details, text='名前とメールは記録に含まれます。後でGitHubへ送った場合は公開されます。作業フォルダーは変更しません。',
                   style='Muted.TLabel', wraplength=820).grid(row=2, column=0, columnspan=4, sticky='w', pady=4)
         commands = ttk.Frame(popup, padding=12)
         commands.grid(row=5, column=0, sticky='ew')
+        tools=ttk.Frame(commands);tools.pack(fill='x')
+        actions=ttk.Frame(commands);actions.pack(fill='x',pady=(8,0))
         def preview():
             if app.busy: return
             paths = list(selected)
@@ -145,6 +157,20 @@ class PushUI:
                 return
             def show(data): self.ai_dialog(data, description, popup, excluded)
             app.run('説明対象の差分を準備しています…', lambda: preview_changes(project, plan, paths), show)
+        def keep_local():
+            if app.busy:return
+            paths=list(selected);message=description.get('1.0','end-1c')
+            if not paths or not message.strip() or not name.get().strip() or not email.get().strip():
+                messagebox.showinfo('入力を確認','記録するファイル・変更の説明・名前・メールを確認してください。',parent=popup);return
+            counts=selection_counts(plan.changes,paths)
+            note=f"変更 {counts['M']} 件 ／ 追加 {counts['A']} 件 ／ 削除 {counts['D']} 件"
+            if not messagebox.askyesno('PCに記録だけ残す',note+'\n選んだ内容をこのPCだけに記録します。GitHubへは送信しません。\n削除の選択は新しい記録内だけに反映し、作業フォルダーは変更しません。',parent=popup,default='no'):return
+            name_value,email_value=name.get(),email.get()
+            def saved(record):
+                popup.destroy();app.config.update(author_name=name_value,author_email=email_value);app.save()
+                app.status.set('PCに記録しました：'+record['commit'][:12])
+                messagebox.showinfo('PCに記録しました',record['commit'][:12]+'\nGitHubへは送信していません。「保管した内容 → PCの記録」から確認・送信できます。')
+            app.run('PCに記録しています…',lambda:save_local(project,plan,paths,message,name_value,email_value,lambda note:setattr(app,'operation_note',note)),saved)
         def send():
             if app.busy: return
             paths = list(selected)
@@ -153,14 +179,11 @@ class PushUI:
                 return
             new = app.terms.original(mode.get()) == '新しい分岐として送る'
             destination = branch.get().strip()
-            if not new and plan.branches.get(destination) != plan.base:
+            if not new and plan.branches.get(destination) != plan.base and plan.repository is None:
                 messagebox.showinfo('新しい分岐をおすすめします', 'この分岐には元の版と異なる更新があります。「新しい分岐として送る」を選んでください。', parent=popup)
                 return
             counts = selection_counts(plan.changes, selected)
             deletion_note = '\n削除対象はGitHubの新しい履歴から取り除きます（PC側には影響しません）。' if counts['D'] else ''
-            if not messagebox.askyesno('GitHubへ送信', f"{project.name}\n{app.terms.text('分岐')}: {destination}\n変更 {counts['M']} 件 ／ 追加 {counts['A']} 件 ／ 削除 {counts['D']} 件" +
-                                      deletion_note + '\n選んだ内容を記録してGitHubへ送りますか？', parent=popup):
-                return
             message = description.get('1.0','end-1c')
             name_value, email_value = name.get(), email.get()
             def done(result):
@@ -168,21 +191,34 @@ class PushUI:
                 app.config['author_name'], app.config['author_email'] = name_value, email_value
                 app.save()
                 messagebox.showinfo('GitHubへ送りました', app.terms.text('分岐')+': ' + result['branch'] + '\n履歴: ' + result['sha'][:12] + '\n' + result['warning'])
-                app.refresh()
-            app.run('記録を作ってGitHubへ送っています…',
-                    lambda: publish(project, plan, paths, destination, new, message, name_value, email_value,
-                                    lambda note: setattr(app, 'operation_note', note)), done)
+                if app.project is project:app.refresh()
+            def execute():
+                app.run('記録を作ってGitHubへ送っています…',
+                        lambda: publish(project, plan, paths, destination, new, message, name_value, email_value,
+                                        lambda note: setattr(app, 'operation_note', note)), done)
+            if plan.repository is not None:
+                parent=json.loads((plan.repository.parent/'record.json').read_text(encoding='utf-8'))
+                baseline=parent.get('root_base',plan.base) if new else plan.branches.get(destination)
+                if not baseline:messagebox.showinfo('送信先を確認','送信先を選び直してください。',parent=popup);return
+                def confirm_all(data):
+                    text='送信先：'+destination+'\n以前PCに記録した内容も含め、以下の変更を送ります。\n\n'+data['summary']+'\n'+data['patch']+'\n\nGitHubへ送信しますか？'
+                    if review(popup,'送信する全ての変更を確認',text,confirm=True):execute()
+                app.run('送信する全ての変更を確認しています…',lambda:preview_changes(project,plan,paths,baseline),confirm_all)
+            else:
+                if messagebox.askyesno('GitHubへ送信',f"{project.name}\n{app.terms.text('分岐')}: {destination}\n変更 {counts['M']} 件 ／ 追加 {counts['A']} 件 ／ 削除 {counts['D']} 件"+deletion_note+'\n選んだ内容を記録してGitHubへ送りますか？',parent=popup):execute()
         def cancel():
             if app.busy:
                 messagebox.showinfo('処理中です', '処理が終わってから閉じてください。', parent=popup)
                 return
             popup.destroy()
         popup.protocol('WM_DELETE_WINDOW', cancel)
-        ttk.Button(commands, text='選んだファイルの変更を見る', command=preview).pack(side='left', padx=4)
-        ttk.Button(commands, text='AIに説明を頼む（任意）', command=ask_ai).pack(side='left', padx=4)
-        ttk.Button(commands, text='キャンセル', command=cancel).pack(side='right', padx=4)
-        ttk.Button(commands, text='記録してGitHubへ送る', command=send, style='Primary.TButton').pack(side='right', padx=4)
+        ttk.Button(tools, text='選んだファイルの変更を見る', command=preview).pack(side='left', padx=4)
+        ttk.Button(tools, text='AIに説明を頼む（任意）', command=ask_ai).pack(side='left', padx=4)
+        ttk.Button(actions, text='キャンセル', command=cancel).pack(side='right', padx=4)
+        if not local_only:ttk.Button(actions, text='記録してGitHubへ送る', command=send, style='Primary.TButton').pack(side='right', padx=4)
+        ttk.Button(actions,text='PCに記録だけ残す',command=keep_local,style='Primary.TButton' if local_only else 'TButton').pack(side='right',padx=4)
         popup.grab_set()
+        return popup
 
     def text_view(self, title, text):
         app = self.app

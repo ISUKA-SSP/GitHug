@@ -49,7 +49,7 @@ def checked_folder(project, folder):
     protected = (Path.home().resolve(), Path.cwd().resolve(), project.base.resolve(), project.base.parent.resolve())
     if any(path == p or path in p.parents for p in protected):
         raise UpdateConflict('アプリ本体・保存先全体・ホームフォルダーは更新先にできません。')
-    for name in ('history.git', 'records', 'backups', 'updates'):
+    for name in ('history.git', 'records', 'backups', 'updates', 'local-records', 'outbox'):
         protected_path = (project.base / name).resolve()
         if path == protected_path or protected_path in path.parents:
             raise UpdateConflict('GitHugの管理用フォルダーは入れ替えできません。')

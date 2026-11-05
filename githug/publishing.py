@@ -2,6 +2,7 @@
 from dataclasses import dataclass
 from datetime import datetime
 import hashlib
+from copy import copy
 import os
 from pathlib import Path
 import re
@@ -38,6 +39,8 @@ class PushPlan:
     branches: dict
     author_name: str
     author_email: str
+    repository: Path | None = None
+    source_stamp: dict | None = None
 
 
 def choose_files(changes, mode):
@@ -123,10 +126,16 @@ def inspect_push(project, folder, fallback_base=None, progress=None):
     source = Path(folder).resolve(strict=True)
     if not source.is_dir(): raise ValueError('送信元のフォルダーが見つかりません。')
     base_folder = project.base.resolve()
-    reserved = [base_folder / name for name in ('history.git', 'records', 'backups', 'updates', 'outbox')]
+    reserved = [base_folder / name for name in ('history.git', 'records', 'backups', 'updates', 'outbox', 'local-records')]
     if source == base_folder or source in base_folder.parents or any(source == path or path in source.parents for path in reserved):
         raise ValueError('GitHugの管理用データを含む場所は送信元にできません。コードのフォルダーを選んでください。')
-    base = local_base(project, source) or fallback_base
+    from .local_records import latest_for_folder,source_stamp
+    local=latest_for_folder(project,source)
+    origin=project
+    stamp=source_stamp(origin,source)
+    if local:
+        project=copy(project);project.cache=Path(local['_repo'])
+    base = local['commit'] if local else local_base(project, source) or fallback_base
     if not base or not re.fullmatch(r'[0-9a-f]{40,64}', base):
         raise ValueError('もとにした履歴が分かりません。上で比較基準の履歴を選んでから送信してください。')
     paths = tracked(project, base)
@@ -179,13 +188,15 @@ def inspect_push(project, folder, fallback_base=None, progress=None):
         if digest(safe_path(source, change.path)) != change.fingerprint:
             raise UpdateConflict('確認中にファイルが変わりました。送信候補を確認し直してください。')
     branches = {}
-    for line in git('for-each-ref', '--format=%(refname:strip=2)\t%(objectname)', 'refs/heads', cwd=project.cache).splitlines():
+    for line in git('for-each-ref', '--format=%(refname:strip=2)\t%(objectname)', 'refs/heads', cwd=origin.cache).splitlines():
         name, sha = line.split('\t', 1)
         branches[name] = sha
     def config(name):
         try: return git('config', '--get', name, cwd=source).strip()
         except GitError: return ''
-    return PushPlan(source, base, changes, branches, config('user.name'), config('user.email'))
+    if source_stamp(origin,source)!=stamp:raise UpdateConflict('確認中に作業フォルダーの基準が変わりました。確認し直してください。')
+    return PushPlan(source, base, changes, branches, config('user.name'), config('user.email'),
+                    Path(local['_repo']) if local else None,stamp)
 
 
 def selected_changes(plan, paths):
@@ -202,7 +213,9 @@ def selected_changes(plan, paths):
 
 def prepare_selected(project, plan, paths, folder):
     selected = selected_changes(plan, paths)
-    make_repo(project, plan.base, folder)
+    base_project=copy(project)
+    if plan.repository is not None:base_project.cache=plan.repository
+    make_repo(base_project, plan.base, folder)
     for change in selected:
         target = safe_path(folder, change.path)
         if change.kind == 'D': target.unlink(missing_ok=True)
@@ -216,12 +229,12 @@ def prepare_selected(project, plan, paths, folder):
     return selected
 
 
-def preview_changes(project, plan, paths):
+def preview_changes(project, plan, paths, comparison_base=None):
     with tempfile.TemporaryDirectory(prefix='push-diff-', dir=project.base) as temporary:
         folder = Path(temporary) / 'repo'
         selected = prepare_selected(project, plan, paths, folder)
-        summary = git('diff', '--cached', '--numstat', '--no-renames', '--', cwd=folder)
-        patch = git('diff', '--cached', '--no-ext-diff', '--no-textconv', '--no-renames', '--', cwd=folder)
+        summary = git('diff', '--cached', '--numstat', '--no-renames', comparison_base or plan.base, '--', cwd=folder)
+        patch = git('diff', '--cached', '--no-ext-diff', '--no-textconv', '--no-renames', comparison_base or plan.base, '--', cwd=folder)
     return {'summary': summary, 'patch': patch, 'files': [change.path for change in selected]}
 
 
@@ -230,22 +243,28 @@ def remote_head(project, branch):
     return raw.split('\t', 1)[0] if raw.strip() else None
 
 
-def publish(project, plan, paths, branch, is_new, message, author_name, author_email, progress=None):
-    branch, message = branch.strip(), message.strip()
-    if not branch or branch.startswith('-'): raise ValueError('分岐の名前を入力してください。')
-    git('check-ref-format', '--branch', branch)
-    if not message: raise ValueError('変更の説明を入力してください。')
-    if not author_name.strip() or not author_email.strip() or '\n' in author_name + author_email or '\r' in author_name + author_email:
-        raise ValueError('記録する名前とメールアドレスを入力してください。')
-    selected_changes(plan, paths)
-    tip = remote_head(project, branch)
+def destination_expected(project,plan,branch,is_new):
+    if not branch or branch.startswith('-'):raise ValueError('作業ルート名を入力してください。')
+    git('check-ref-format','--branch',branch)
+    tip=remote_head(project,branch)
     if is_new:
-        if tip: raise RemoteChanged('同じ名前の分岐が既にあります。別の名前で新しく送ってください。')
-        expected = ''
-    else:
-        expected = plan.branches.get(branch)
-        if not expected or tip != expected or expected != plan.base:
-            raise RemoteChanged('GitHub側に別の更新があります。自分の変更は新しい分岐として送ってください。変更を合わせる機能は今後追加予定です。')
+        if tip:raise RemoteChanged('同じ名前の作業ルートが既にあります。別の名前を選んでください。')
+        return ''
+    expected=plan.branches.get(branch)
+    if not expected or tip!=expected:raise RemoteChanged('GitHub側が更新されています。履歴を更新して確認し直すか、新しい作業ルートへ送ってください。')
+    if expected!=plan.base:
+        if plan.repository is None:raise RemoteChanged('GitHub側に別の更新があります。新しい作業ルートへ送ってください。')
+        try:git('merge-base','--is-ancestor',expected,plan.base,cwd=plan.repository)
+        except GitError:raise RemoteChanged('変更が分かれています。既存の作業ルートは書き換えず、新しい作業ルートへ送ってください。') from None
+    return expected
+
+
+def publish(project, plan, paths, branch, is_new, message, author_name, author_email, progress=None):
+    from .local_records import validate_author
+    branch,message=branch.strip(),message.strip()
+    validate_author(message,author_name,author_email)
+    selected_changes(plan,paths)
+    expected=destination_expected(project,plan,branch,is_new)
     outbox = project.base / 'outbox' / (datetime.now().strftime('%Y%m%d_%H%M%S') + '_' + uuid4().hex[:8])
     outbox.mkdir(parents=True)
     folder = outbox / 'repo'

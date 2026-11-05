@@ -12,6 +12,7 @@ from .core import Project, ComparisonCancelled
 from .console_panel import ConsolePanel
 from .folder_removal import checked_removal, identity, recycle_registered, hide_missing, folder_key
 from .folder_batch_ui import remove_selected
+from .local_records_ui import show_records
 from . import __version__
 from .listing import date_value, visible_rows
 from .theme import apply_dark_theme
@@ -86,7 +87,12 @@ class App:
         toolbar.pack(fill='x', padx=16, pady=(0,12))
         ttk.Button(toolbar, text='GitHubの履歴を更新', command=self.refresh, style='Primary.TButton').pack(side='left', padx=4)
         ttk.Button(toolbar, text='＋ プロジェクト', command=self.add).pack(side='left', padx=4)
-        ttk.Button(toolbar, text='更新前のバックアップ', command=self.backups_dialog).pack(side='left', padx=4)
+        storage=ttk.Menubutton(toolbar,text='保管した内容')
+        storage_menu=tk.Menu(storage,tearoff=False)
+        storage_menu.add_command(label='PCの記録',command=lambda:show_records(self))
+        storage_menu.add_command(label='更新前のバックアップ',command=self.backups_dialog)
+        storage.configure(menu=storage_menu);storage.pack(side='left',padx=4)
+        self.tooltips.add(storage,'PCに残した記録と、更新前のバックアップを確認します。')
         ttk.Button(toolbar, text='コピー・履歴の保存先', command=self.choose_root, style='Quiet.TButton').pack(side='right', padx=4)
         language=ttk.Frame(toolbar);language.pack(side='right',padx=8)
         ttk.Label(language,text='表示用語：').pack(side='left')
@@ -1165,6 +1171,8 @@ class App:
             enabled = record and record.get('kind') == 'work' and record.get('update_allowed')
             menu.add_command(label='同じ場所への更新を無効にする' if enabled else 'この作業フォルダーの更新を有効にする', command=self.work_update_permission)
         menu.add_command(label='PowerShellで開く／コマンドを実行', command=self.command_dialog,state=mode)
+        menu.add_command(label='PCに記録だけ残す',command=lambda:self.with_selected_folder(lambda folder:self.push_ui.begin(folder,local_only=True)),state=mode)
+        menu.add_command(label='PCの記録を見る',command=lambda:show_records(self))
         menu.add_command(label='変更を確認してGitHubへ送る', command=self.send_selected_folder,state=mode)
         menu.add_separator()
         states=[self.folder_state(self.folders.item(selected,'values')[1]) for selected in self.folders.selection()]
