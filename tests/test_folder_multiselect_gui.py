@@ -26,15 +26,17 @@ class FolderSelectionTests(unittest.TestCase):
     def tearDown(self):
         if hasattr(self,'app'):
             self.root.update_idletasks()
-            for timer in self.root.tk.call('after','info'):self.root.after_cancel(timer)
+            for timer in self.root.tk.call('after','info'):self.root.tk.call('after','cancel',timer)
             self.root.destroy()
 
     def click(self,item,state=0):
         self.app.folders.see(item);self.root.update_idletasks()
         box=self.app.folders.bbox(item);self.assertTrue(box)
         x,y=box[0]+10,box[1]+box[3]//2
-        self.app.folders.event_generate('<ButtonPress-1>',x=x,y=y,state=state)
-        self.app.folders.event_generate('<ButtonRelease-1>',x=x,y=y,state=state)
+        # Synthetic clicks must have distinct timestamps to avoid accidental double-click bindings after scrolling.
+        self.click_time=getattr(self,'click_time',0)+1000
+        self.app.folders.event_generate('<ButtonPress-1>',x=x,y=y,state=state,time=self.click_time)
+        self.app.folders.event_generate('<ButtonRelease-1>',x=x,y=y,state=state,time=self.click_time+100)
         self.root.update()
 
     def test_ctrl_shift_selection_and_multiple_drag_cannot_send(self):
@@ -45,7 +47,7 @@ class FolderSelectionTests(unittest.TestCase):
         self.click(rows[3],1);self.assertEqual(set(tree.selection()),set(rows))
         tree.see(rows[0]);self.root.update_idletasks()
         box=tree.bbox(rows[0]);x,y=box[0]+10,box[1]+5
-        tree.event_generate('<ButtonPress-1>',x=x,y=y)
+        tree.event_generate('<ButtonPress-1>',x=x,y=y,time=10000)
         tree.event_generate('<B1-Motion>',x=x+20,y=y-80,state=0x100)
         tree.event_generate('<ButtonRelease-1>',x=x+20,y=y-80)
         self.root.update()
