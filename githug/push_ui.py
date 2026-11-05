@@ -5,8 +5,10 @@ from pathlib import Path
 import tkinter as tk
 from tkinter import ttk
 from .terminology import messagebox
-from .publishing import inspect_push, local_base, preview_changes, publish, choose_files, selection_counts
+from .publishing import inspect_push, local_base, preview_changes, publish, choose_files, selection_counts, destination_expected, RemoteChanged
 from .folder_batch_ui import review
+from .reconciliation import prepare_resolution,cancel_resolution
+from .reconciliation_ui import ResolutionDialog
 from .local_records import save_local,latest_for_folder
 from .explaining import explainable, explanation_input, explain, cache_key
 
@@ -179,9 +181,6 @@ class PushUI:
                 return
             new = app.terms.original(mode.get()) == '新しい分岐として送る'
             destination = branch.get().strip()
-            if not new and plan.branches.get(destination) != plan.base and plan.repository is None:
-                messagebox.showinfo('新しい分岐をおすすめします', 'この分岐には元の版と異なる更新があります。「新しい分岐として送る」を選んでください。', parent=popup)
-                return
             counts = selection_counts(plan.changes, selected)
             deletion_note = '\n削除対象はGitHubの新しい履歴から取り除きます（PC側には影響しません）。' if counts['D'] else ''
             message = description.get('1.0','end-1c')
@@ -190,22 +189,36 @@ class PushUI:
                 popup.destroy()
                 app.config['author_name'], app.config['author_email'] = name_value, email_value
                 app.save()
-                messagebox.showinfo('GitHubへ送りました', app.terms.text('分岐')+': ' + result['branch'] + '\n履歴: ' + result['sha'][:12] + '\n' + result['warning'])
+                messagebox.showinfo('変更はありません' if result.get('unchanged') else 'GitHubへ送りました', app.terms.text('分岐')+': ' + result['branch'] + '\n履歴: ' + result['sha'][:12] + '\n' + result['warning'])
                 if app.project is project:app.refresh()
             def execute():
                 app.run('記録を作ってGitHubへ送っています…',
                         lambda: publish(project, plan, paths, destination, new, message, name_value, email_value,
                                         lambda note: setattr(app, 'operation_note', note)), done)
-            if plan.repository is not None:
-                parent=json.loads((plan.repository.parent/'record.json').read_text(encoding='utf-8'))
-                baseline=parent.get('root_base',plan.base) if new else plan.branches.get(destination)
-                if not baseline:messagebox.showinfo('送信先を確認','送信先を選び直してください。',parent=popup);return
-                def confirm_all(data):
-                    text='送信先：'+destination+'\n以前PCに記録した内容も含め、以下の変更を送ります。後で削除した内容も履歴に残っていれば送信されます。\n\n'+data.get('history','')+'\n'+data['summary']+'\n'+data['patch']+'\n\nGitHubへ送信しますか？'
-                    if review(popup,'送信する全ての変更を確認',text,confirm=True):execute()
-                app.run('送信する全ての変更を確認しています…',lambda:preview_changes(project,plan,paths,baseline),confirm_all)
-            else:
-                if messagebox.askyesno('GitHubへ送信',f"{project.name}\n{app.terms.text('分岐')}: {destination}\n変更 {counts['M']} 件 ／ 追加 {counts['A']} 件 ／ 削除 {counts['D']} 件"+deletion_note+'\n選んだ内容を記録してGitHubへ送りますか？',parent=popup):execute()
+            def direct():
+                if plan.repository is not None:
+                    parent=json.loads((plan.repository.parent/'record.json').read_text(encoding='utf-8'))
+                    baseline=parent.get('root_base',plan.base) if new else plan.branches.get(destination)
+                    if not baseline:messagebox.showinfo('送信先を確認','送信先を選び直してください。',parent=popup);return
+                    def confirm_all(data):
+                        text='送信先：'+destination+'\n以前PCに記録した内容も含め、以下の変更を送ります。後で削除した内容も履歴に残っていれば送信されます。\n\n'+data.get('history','')+'\n'+data['summary']+'\n'+data['patch']+'\n\nGitHubへ送信しますか？'
+                        if review(popup,'送信する全ての変更を確認',text,confirm=True):execute()
+                    app.run('送信する全ての変更を確認しています…',lambda:preview_changes(project,plan,paths,baseline),confirm_all)
+                else:
+                    if messagebox.askyesno('GitHubへ送信',f"{project.name}\n{app.terms.text('分岐')}: {destination}\n変更 {counts['M']} 件 ／ 追加 {counts['A']} 件 ／ 削除 {counts['D']} 件"+deletion_note+'\n選んだ内容を記録してGitHubへ送りますか？',parent=popup):execute()
+            if new:direct();return
+            def rebuild():
+                return prepare_resolution(project,destination,plan,paths,progress=lambda note:setattr(app,'operation_note',note))
+            def check():
+                try:destination_expected(project,plan,destination,False);return None
+                except RemoteChanged:return rebuild()
+            def resolved(value):
+                if not popup.winfo_exists():
+                    if value is not None:cancel_resolution(value)
+                    return
+                if value is None:direct();return
+                ResolutionDialog(app,project,value,message,name_value,email_value,popup,done,rebuild)
+            app.run('PCとGitHubの変更を確認しています…',check,resolved)
         def cancel():
             if app.busy:
                 messagebox.showinfo('処理中です', '処理が終わってから閉じてください。', parent=popup)

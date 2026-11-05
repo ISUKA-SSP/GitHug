@@ -5,7 +5,9 @@ from tkinter import ttk
 from .core import git
 from .local_records import records,record_changes,send_record,send_preview
 from .listing import date_value
-from .publishing import PushPlan,destination_expected
+from .publishing import PushPlan,destination_expected,RemoteChanged
+from .reconciliation import prepare_resolution,cancel_resolution
+from .reconciliation_ui import ResolutionDialog
 from .terminology import messagebox
 from .folder_batch_ui import review
 
@@ -63,9 +65,22 @@ def send_dialog(app,project,record,parent,reload):
         def prepare():
             # Only ancestral destinations can be advanced; divergent changes are never overwritten.
             plan=PushPlan(Path(record['folder']),record['commit'],[],branches,'','',Path(record['_repo']))
-            destination_expected(project,plan,destination,is_new)
+            try:destination_expected(project,plan,destination,is_new)
+            except RemoteChanged:
+                if is_new:raise
+                return prepare_resolution(project,destination,record=record)
             return send_preview(record,baseline)
         def confirmed(text):
+            if not popup.winfo_exists():
+                if not isinstance(text,str):cancel_resolution(text)
+                return
+            if not isinstance(text,str):
+                def finished(result):
+                    if popup.winfo_exists():popup.destroy()
+                    reload();messagebox.showinfo('変更はありません' if result.get('unchanged') else 'GitHubへ送りました',result['sha'][:12]+'\n'+result['warning'])
+                    if app.project is project:app.refresh()
+                ResolutionDialog(app,project,text,record['message'],record['author_name'],record['author_email'],popup,finished,lambda:prepare_resolution(project,destination,record=record))
+                return
             if not review(popup,'GitHubへ送る記録を確認',project.url+'\n送信先：'+destination+'\n\n'+text+'\n\nこの内容をGitHubへ送りますか？',confirm=True):return
             def done(result):
                 if popup.winfo_exists():popup.destroy()
