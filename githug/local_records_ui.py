@@ -4,6 +4,8 @@ import tkinter as tk
 from tkinter import ttk
 from .core import git
 from .local_records import records,record_changes,send_record,send_preview
+from .restoration import prepare_local
+from .restoration_ui import start_restore
 from .listing import date_value
 from .publishing import PushPlan,destination_expected,RemoteChanged
 from .reconciliation import prepare_resolution,cancel_resolution
@@ -39,7 +41,12 @@ def show_records(app):
         # Network access is explicit and only required to choose/check a send destination.
         def ready(_):send_dialog(app,project,record,popup,reload)
         app.run('GitHubの送信先を確認しています…',project.refresh,ready)
+    def restore():
+        if app.busy:return
+        record=selected()
+        if record:start_restore(app,project,lambda:prepare_local(project,Path(record['_path']).parent.name),popup)
     ttk.Button(controls,text='変更を見る',command=inspect).pack(side='left',padx=4)
+    ttk.Button(controls,text='新しいフォルダーへ復元',command=restore).pack(side='left',padx=4)
     ttk.Button(controls,text='この記録をGitHubへ送る',command=send).pack(side='left',padx=4)
     ttk.Button(controls,text='一覧を再表示',command=reload).pack(side='left',padx=4)
     ttk.Button(controls,text='閉じる',command=popup.destroy).pack(side='right')

@@ -14,6 +14,8 @@ from .folder_removal import checked_removal, identity, recycle_registered, hide_
 from .folder_batch_ui import remove_selected
 from .local_records_ui import show_records
 from .route_review_ui import open_route_review
+from .restoration import prepare_backup,prepare_again
+from .restoration_ui import start_restore
 from . import __version__
 from .listing import date_value, visible_rows
 from .theme import apply_dark_theme
@@ -901,6 +903,9 @@ class App:
     def begin_update(self, sha, item):
         if self.busy or not self.project: return
         folder = self.folders.item(item, 'values')[1]
+        _,origin=record_for_folder(self.project,folder)
+        if origin and origin.get('kind')=='restored' and not origin.get('update_allowed',False):
+            messagebox.showinfo('復元した内容を保護しています','復元先は上書き更新が無効です。別フォルダーへのコピーを使うか、作業フォルダーとして登録してから更新を有効にしてください。');return
         if not Path(folder).is_dir():
             if messagebox.askyesno('フォルダーが見つかりません',
                     '更新先が削除、または移動されています。\n選んだ履歴から別フォルダーへ新しくコピーしますか？\n' + folder):
@@ -1002,7 +1007,7 @@ class App:
         popup = tk.Toplevel(self.window)
         popup.title('更新前のバックアップ — ' + project.name)
         popup.geometry('950x550')
-        ttk.Label(popup, text='更新前の内容をZIPでバックアップしています。復元するときはZIPを別の場所へ展開してください。', padding=12).pack(anchor='w')
+        ttk.Label(popup, text='更新前の全ファイルをZIPに保管しています。「新しいフォルダーへ復元」で取り出せます。元の作業フォルダーは変更しません。', padding=12).pack(anchor='w')
         controls = ttk.Frame(popup, padding=12)
         controls.pack(side='bottom', fill='x')
         table = self.table(popup, ('created', 'folder', 'size'), ('バックアップ日時', '元のフォルダー', 'サイズ'))
@@ -1027,6 +1032,7 @@ class App:
             if not path: return
             self.open_folder_path(str(path))
         def delete():
+            if self.busy:return
             path = chosen()
             if not path: return
             if not messagebox.askyesno('更新前のバックアップを削除', 'このZIPを削除しますか？\n更新前の手元の変更は、このZIPから復元できなくなります。\n' + str(path), parent=popup): return
@@ -1036,6 +1042,13 @@ class App:
             except OSError as exc:
                 messagebox.showinfo('削除できませんでした', str(exc), parent=popup)
             reload()
+        def restore():
+            if self.busy:return
+            path=chosen()
+            if not path:
+                messagebox.showinfo('バックアップを選択','一覧から復元するバックアップを1つ選んでください。',parent=popup);return
+            start_restore(self,project,lambda:prepare_backup(project,path),popup)
+        ttk.Button(controls,text='新しいフォルダーへ復元',command=restore).pack(side='left',padx=4)
         ttk.Button(controls, text='ZIPを開く', command=open_archive).pack(side='left', padx=4)
         ttk.Button(controls, text='選んだバックアップを削除', command=delete).pack(side='left', padx=4)
         ttk.Button(controls, text='一覧を再表示', command=reload).pack(side='left', padx=4)
@@ -1074,6 +1087,7 @@ class App:
             if kind == '作業用（登録）' and state == '利用できます':
                 _, version = record_for_folder(self.project, folder)
                 state += '（上書き更新はON）' if version and version.get('update_allowed') else '（上書き更新はOFF）'
+            if kind in ('バックアップから復元','PCの記録から復元') and state=='利用できます':state+='（上書き更新はOFF）'
             date, timestamp = date_value(created)
             self.folder_rows.append({
                 'id': item, 'pinned': kind == '作業用（登録）', 'values': (kind, folder, sha[:8], date, state, short_note(memo)),
@@ -1086,7 +1100,9 @@ class App:
             add('work:' + str(index), '作業用（登録）', folder, record.get('sha', ''), record.get('created', ''))
         for record in self.project.snapshots():
             item = 'snapshot:' + record['folder']
-            add(item, 'コピーしたフォルダー', record['folder'], record['sha'], record.get('created', ''))
+            label={'backup':'バックアップから復元','local':'PCの記録から復元'}.get(record.get('restore_kind'),'コピーしたフォルダー')
+            display=record.get('restore_commit') or record['sha']
+            add(item,label,record['folder'],display,record.get('created',''))
             self.folder_records[item] = record
         self.render_folders()
 
@@ -1105,6 +1121,7 @@ class App:
         if state == '利用できます' and self.folders.item(item, 'values')[0] == '作業用（登録）':
             _, version = record_for_folder(self.project, folder)
             display_state += '（上書き更新はON）' if version and version.get('update_allowed') else '（上書き更新はOFF）'
+        if self.folders.item(item,'values')[0] in ('バックアップから復元','PCの記録から復元') and state=='利用できます':display_state+='（上書き更新はOFF）'
         self.folders.set(item, 'state', display_state)
         if state == '利用できます':
             action(folder)
@@ -1117,6 +1134,10 @@ class App:
             messagebox.showinfo('作業場所が見つかりません',
                                 'フォルダーが削除、または移動されています。\n' + folder +
                                 '\n\n登録した作業用フォルダーは自動で再作成しません。移動先を登録するか、上の履歴から新しくコピーしてください。')
+            return
+        if record.get('kind')=='restored':
+            project=self.project
+            start_restore(self,project,lambda:prepare_again(project,record),after=action,notice='同じ復元元から新しく作成します。復元後に加えた編集は、復元元に記録されていなければ戻りません。')
             return
         project, sha = self.project, record['sha']
         if not messagebox.askyesno('コピーフォルダーが見つかりません',

@@ -50,6 +50,13 @@ def latest_for_folder(project,folder):
         try:git('cat-file','-e',record['commit']+'^{commit}',cwd=record['_repo'])
         except GitError:continue
         return record
+    _,origin=record_for_folder(project,folder)
+    if origin and origin.get('local_record_id') and origin.get('restore_identity')==stamp['identity'] and origin.get('sha')==origin.get('restore_baseline') and not origin.get('last_sent_sha'):
+        restored=next((record for record in records(project) if Path(record['_path']).parent.name==origin['local_record_id'] and record['commit']==origin.get('restore_commit')),None)
+        if restored:
+            try:git('cat-file','-e',restored['commit']+'^{commit}',cwd=restored['_repo'])
+            except GitError:return None
+            return restored
     return None
 
 
