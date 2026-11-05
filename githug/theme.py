@@ -31,6 +31,28 @@ def check_indicators(window, style):
     window._githug_check_images = images  # Keep Tcl image handles alive.
 
 
+def radio_indicators(window, style):
+    images=[]
+    for selected,disabled in ((False,False),(True,False),(False,True),(True,True)):
+        image=tk.PhotoImage(master=window,width=22,height=22)
+        image.put(PANEL,to=(0,0,22,22))
+        border=('#68788a' if disabled else '#54d9ec') if selected else '#9b9b9b'
+        fill=('#467080' if disabled else '#54d9ec') if selected else FIELD
+        for y in range(22):
+            for x in range(22):
+                distance=(x-10.5)**2+(y-10.5)**2
+                if distance<=81:image.put(border if distance>=49 else fill,to=(x,y))
+                if selected and distance<=9:image.put('#102a30' if not disabled else '#28333a',to=(x,y))
+        images.append(image)
+    style.element_create('HugRadio.indicator','image',images[0],
+                         ('disabled','selected',images[3]),('disabled',images[2]),('selected',images[1]))
+    style.layout('TRadiobutton',[('Radiobutton.padding',{'sticky':'nswe','children':[
+        ('HugRadio.indicator',{'side':'left','sticky':''}),
+        ('Radiobutton.focus',{'side':'left','sticky':'nswe','children':[
+            ('Radiobutton.label',{'sticky':'nswe'})]})]})])
+    window._githug_radio_images=images
+
+
 def apply_dark_theme(window):
     style = ttk.Style(window)
     style.theme_use('clam')
@@ -118,6 +140,7 @@ def apply_dark_theme(window):
     style.map('TNotebook.Tab',background=[('selected','#245866'),('active','#484848')],
               foreground=[('selected','#ffffff'),('disabled','#999999'),('!disabled','#eeeeee')])
     check_indicators(window, style)
+    radio_indicators(window, style)
     from .platform_support import dark_titlebar
     def mapped(event):
         if event.widget is window or isinstance(event.widget, tk.Toplevel):

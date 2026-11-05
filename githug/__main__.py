@@ -1245,9 +1245,18 @@ class App:
     def compare(self):
         items = self.history.selection()
         if self.busy or not items: return
-        folder = filedialog.askdirectory(title='選んだ履歴と比較するフォルダー')
+        selected = self.folders.selection()
+        if len(selected)>1:
+            messagebox.showinfo('比較するフォルダーを1つ選択','PCのフォルダー一覧から、比較するフォルダーを1つ選んでください。')
+            return
+        folder = self.folders.item(selected[0],'values')[1] if selected else filedialog.askdirectory(title='選んだ履歴と比較するフォルダー')
         if not folder: return
-        project, sha = self.project, items[0]
+        if not Path(folder).is_dir():
+            messagebox.showinfo('比較するフォルダーが見つかりません','フォルダーが削除、または移動されています。保存場所を確認してください。\n'+str(folder))
+            return
+        self.compare_at(self.project,items[0],folder)
+
+    def compare_at(self, project, sha, folder):
         cancel = threading.Event()
         lock = threading.Lock()
         state = {'stage': '比較の準備', 'count': 0, 'total': None, 'name': '', 'finished': False}
@@ -1260,6 +1269,7 @@ class App:
         progress_window.rowconfigure(2, weight=1)
         label = tk.StringVar()
         ttk.Label(progress_window, textvariable=label, padding=12, wraplength=470).grid(row=0, column=0, sticky='ew')
+        progress_window.title('ファイルを比較しています — '+str(folder))
         bar = ttk.Progressbar(progress_window, mode='indeterminate')
         bar.grid(row=1, column=0, sticky='ew', padx=12, pady=8)
         bar.start(40)
@@ -1309,6 +1319,7 @@ class App:
             popup.geometry('900x600')
             summary = tk.StringVar(value=f'違い {len(rows)} 件。結果を表示しています…')
             ttk.Label(popup, textvariable=summary, padding=10).pack()
+            ttk.Label(popup, text='履歴：'+sha[:12]+'  ／  PC：'+str(folder),wraplength=850,padding=(10,4)).pack(fill='x')
             ttk.Label(popup, text='改行形式の違いや、無視対象のファイルも含む比較です。').pack()
             table = self.table(popup, ('state', 'file'), ('状態', 'ファイル'))
             def append_batch(offset=0):

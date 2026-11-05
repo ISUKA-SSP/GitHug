@@ -4,7 +4,7 @@
 
 ## 開発中のPython版
 
-このブランチは1.1.0a13です。今回はEXEを作成せず、Python版で確認します。
+このブランチは1.1.0a14です。今回はEXEを作成せず、Python版で確認します。
 
 ```powershell
 python -m pip install -r requirements.txt
