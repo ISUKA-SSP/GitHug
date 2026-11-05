@@ -7,6 +7,7 @@ from .local_records import records,record_changes,send_record,send_preview
 from .restoration import prepare_local
 from .restoration_ui import start_restore
 from .listing import date_value
+from .operation_guide import handoff as guide_handoff
 from .publishing import PushPlan,destination_expected,RemoteChanged
 from .reconciliation import prepare_resolution,cancel_resolution
 from .reconciliation_ui import ResolutionDialog
@@ -50,7 +51,9 @@ def show_records(app):
     ttk.Button(controls,text='この記録をGitHubへ送る',command=send).pack(side='left',padx=4)
     ttk.Button(controls,text='一覧を再表示',command=reload).pack(side='left',padx=4)
     ttk.Button(controls,text='閉じる',command=popup.destroy).pack(side='right')
-    reload();return popup
+    reload()
+    guide_handoff(app,popup,'restore-local','取り出したい記録を1つ選び、「新しいフォルダーへ復元」を押してください。保存場所の確認後にコピーを始めます。')
+    return popup
 
 
 def send_dialog(app,project,record,parent,reload):

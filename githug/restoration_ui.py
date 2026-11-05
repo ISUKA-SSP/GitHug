@@ -1,5 +1,6 @@
 """Review exact new destination before restoring; never reuses an existing folder."""
 from .restoration import execute_restore
+from .operation_guide import begin as guide_begin, finish as guide_finish
 from .terminology import messagebox
 
 
@@ -14,8 +15,10 @@ def start_restore(app,project,prepare,parent=None,after=None,notice=''):
         if notice:text+='\n\n'+notice
         text+='\n\nこの場所へ復元しますか？'
         if not messagebox.askyesno('新しいフォルダーへ復元',text,parent=parent,default='no'):return
+        ticket=guide_begin(app,'restore-'+plan.kind,project)
         def done(result):
             folder=result['folder']
+            guide_finish(ticket,'記録した内容を、新しいフォルダーへ復元しました。\n'+folder+('\n'+result['warning'] if result['warning'] else ''))
             if app.project is project:
                 app.folder_query.set('');app.load_folders()
                 for item in app.folders.get_children():

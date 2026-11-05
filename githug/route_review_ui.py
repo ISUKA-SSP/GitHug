@@ -4,6 +4,7 @@ from tkinter import ttk
 import webbrowser
 from .route_review import routes,default_routes,compare_routes,file_patch,checked_proposal_url,RoutesChanged
 from .terminology import messagebox
+from .operation_guide import begin as guide_begin, finish as guide_finish, handoff as guide_handoff
 
 class RouteReview:
     def __init__(self,app,project,branches,preferred_sha=None):
@@ -67,6 +68,7 @@ class RouteReview:
         self.invalidate();generation=self.generation;base,head=self.base.get(),self.head.get()
         if base==head:
             self.state.set('取り込み先と取り込み元には、異なる作業ルートを選んでください。');return
+        ticket=guide_begin(self.app,'routes',self.project)
         self.state.set('変更を比較しています…')
         def task():
             try:return compare_routes(self.project,base,head),None
@@ -75,6 +77,7 @@ class RouteReview:
             if not self.alive() or generation!=self.generation:return
             plan,error=result
             if error:self.state.set(error);return
+            guide_finish(ticket,'作業ルートの比較結果を開きました。取り込み提案が必要なら、この画面からGitHubへ進めます。提案の作成・合流はまだ行っていません。')
             self.plan=plan;self.state.set(plan.head+' → '+plan.base+'\n'+plan.summary)
             self.write('取り込み元だけにある履歴\n\n'+plan.commits)
             for index,(kind,path) in enumerate(plan.files):
@@ -144,5 +147,6 @@ def open_route_review(app):
         branches=routes(project)
         try:default_routes(branches,preferred)
         except ValueError as exc:messagebox.showinfo('作業ルートを確認',str(exc));return
-        RouteReview(app,project,branches,preferred)
+        view=RouteReview(app,project,branches,preferred)
+        guide_handoff(app,view.window,'routes','取り込み元 → 取り込み先を確認し、必要なら組み合わせを選び直して「内容を比較」を押してください。')
     app.run('GitHubの作業ルートを確認しています…',project.refresh,done)

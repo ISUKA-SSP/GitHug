@@ -34,6 +34,7 @@ from .drag_hint import DragHint
 from .branding import attach_logo
 from .mascot import MascotView, operation_pose
 from .guidance import HoverHelp, register_buttons
+from .operation_guide import open_guide, begin as guide_begin, finish as guide_finish, handoff as guide_handoff
 from .terminology import Terminology, messagebox
 
 class App:
@@ -90,7 +91,9 @@ class App:
         toolbar.pack(fill='x', padx=16, pady=(0,12))
         ttk.Button(toolbar, text='GitHubの履歴を更新', command=self.refresh, style='Primary.TButton').pack(side='left', padx=4)
         ttk.Button(toolbar, text='＋ プロジェクト', command=self.add).pack(side='left', padx=4)
+        ttk.Button(toolbar,text='操作ガイド',command=lambda:open_guide(self)).pack(side='left',padx=4)
         storage=ttk.Menubutton(toolbar,text='保管した内容')
+        self.storage_button=storage
         storage_menu=tk.Menu(storage,tearoff=False)
         storage_menu.add_command(label='PCの記録',command=lambda:show_records(self))
         storage_menu.add_command(label='更新前のバックアップ',command=self.backups_dialog)
@@ -156,6 +159,7 @@ class App:
         controls.grid(row=4, column=0, sticky='ew')
         ttk.Button(controls, text='この時点のファイルをPCへコピー', command=self.reproduce, style='Primary.TButton').pack(side='left', padx=4)
         compare_menu=ttk.Menubutton(controls,text='比べる・取り込む')
+        self.compare_menu=compare_menu
         comparisons=tk.Menu(compare_menu,tearoff=False)
         comparisons.add_command(label='作業フォルダーと比較',command=self.compare)
         comparisons.add_command(label='別の作業ルートと比較・取り込み提案',command=lambda:open_route_review(self))
@@ -879,6 +883,7 @@ class App:
     def reproduce_sha(self, sha):
         if self.busy or not self.project: return
         project = self.project
+        ticket=guide_begin(self,'copy',project)
         def done(folder):
             self.folder_query.set('')
             self.load_folders()
@@ -887,6 +892,7 @@ class App:
                     self.folders.selection_set(item)
                     self.folders.see(item)
                     break
+            guide_finish(ticket,'選んだ履歴のファイルを新しいフォルダーへコピーしました。\n'+folder)
             messagebox.showinfo('コピーしました', '新しいフォルダーに保存しました。\n' + folder)
         self.run('新しいフォルダーへコピーしています…', lambda: project.snapshot(sha), done)
 
@@ -981,6 +987,7 @@ class App:
                     '「手元だけのファイルを残す」がOFFです。\n追加ファイルも更新先から取り除きます（バックアップZIPには残ります）。\n続けますか？', parent=popup):
                 return
             popup.destroy()
+            ticket=guide_begin(self,'update',project)
             def progress(note): self.operation_note = note
             def done(result):
                 self.folder_query.set('')
@@ -989,6 +996,7 @@ class App:
                 detail += f"\n手元だけのファイルを引き継ぎ: {result['retained']} 件"
                 if result['backup']: detail += '\n\n更新前の内容: ' + result['backup']
                 if result['warning']: detail += '\n\n' + result['warning']
+                guide_finish(ticket,'選んだフォルダーを更新しました。\n'+result['folder'])
                 messagebox.showinfo('更新しました', detail)
             self.run('選んだ版に更新しています…', lambda: apply_update(project, plan, keep, progress, preserve_local_only=preserve), done)
         def separate():
@@ -998,6 +1006,7 @@ class App:
         ttk.Button(buttons, text='編集内容を取り消して更新（バックアップなし）', command=lambda: execute(False), style='Danger.TButton').grid(row=0, column=1, sticky='ew', padx=4, pady=4)
         ttk.Button(buttons, text='別フォルダーにコピー', command=separate).grid(row=1, column=0, sticky='ew', padx=4, pady=4)
         ttk.Button(buttons, text='キャンセル', command=popup.destroy).grid(row=1, column=1, sticky='ew', padx=4, pady=4)
+        guide_handoff(self,popup,'update','更新先と手元の変更を確認してください。残すファイルとバックアップの有無を選び、更新ボタンを押す前に確認します。')
         popup.grab_set()
 
     def backups_dialog(self):
@@ -1053,6 +1062,8 @@ class App:
         ttk.Button(controls, text='選んだバックアップを削除', command=delete).pack(side='left', padx=4)
         ttk.Button(controls, text='一覧を再表示', command=reload).pack(side='left', padx=4)
         reload()
+        guide_handoff(self,popup,'restore-backup','バックアップを1つ選び、「新しいフォルダーへ復元」を押してください。保存場所の確認後にコピーを始めます。')
+        return popup
 
     def reproduce(self):
         items = self.history.selection()
@@ -1257,6 +1268,7 @@ class App:
         self.compare_at(self.project,items[0],folder)
 
     def compare_at(self, project, sha, folder):
+        ticket=guide_begin(self,'compare',project)
         cancel = threading.Event()
         lock = threading.Lock()
         state = {'stage': '比較の準備', 'count': 0, 'total': None, 'name': '', 'finished': False}
@@ -1314,6 +1326,7 @@ class App:
             if rows is None:
                 self.status.set('比較を中止しました。ファイルは変更していません。')
                 return
+            guide_finish(ticket,'ファイルの比較結果を開きました。ファイルは変更していません。\n'+str(folder))
             popup = tk.Toplevel(self.window)
             popup.title('ファイルの比較 — 書き換えは行いません')
             popup.geometry('900x600')

@@ -10,6 +10,7 @@ from .folder_batch_ui import review
 from .reconciliation import prepare_resolution,cancel_resolution
 from .reconciliation_ui import ResolutionDialog
 from .local_records import save_local,latest_for_folder
+from .operation_guide import begin as guide_begin, finish as guide_finish, handoff as guide_handoff
 from .explaining import explainable, explanation_input, explain, cache_key
 
 
@@ -168,7 +169,9 @@ class PushUI:
             note=f"変更 {counts['M']} 件 ／ 追加 {counts['A']} 件 ／ 削除 {counts['D']} 件"
             if not messagebox.askyesno('PCに記録だけ残す',note+'\n選んだ内容をこのPCだけに記録します。GitHubへは送信しません。\n削除の選択は新しい記録内だけに反映し、作業フォルダーは変更しません。',parent=popup,default='no'):return
             name_value,email_value=name.get(),email.get()
+            ticket=guide_begin(app,'record',project)
             def saved(record):
+                guide_finish(ticket,'このPCに記録しました。GitHubへは送信していません。\n'+record['commit'][:12])
                 popup.destroy();app.config.update(author_name=name_value,author_email=email_value);app.save()
                 app.status.set('PCに記録しました：'+record['commit'][:12])
                 messagebox.showinfo('PCに記録しました',record['commit'][:12]+'\nGitHubへは送信していません。「保管した内容 → PCの記録」から確認・送信できます。')
@@ -185,7 +188,9 @@ class PushUI:
             deletion_note = '\n削除対象はGitHubの新しい履歴から取り除きます（PC側には影響しません）。' if counts['D'] else ''
             message = description.get('1.0','end-1c')
             name_value, email_value = name.get(), email.get()
+            ticket=guide_begin(app,'send',project)
             def done(result):
+                guide_finish(ticket,('送る変更はありませんでした。' if result.get('unchanged') else 'GitHubへ送信しました。')+'\n送信先：'+result['branch']+'\n'+result['sha'][:12])
                 popup.destroy()
                 app.config['author_name'], app.config['author_email'] = name_value, email_value
                 app.save()
@@ -233,6 +238,7 @@ class PushUI:
         ttk.Button(actions, text='キャンセル', command=cancel).pack(side='right', padx=4)
         if not local_only:ttk.Button(actions, text='記録してGitHubへ送る', command=send, style='Primary.TButton').pack(side='right', padx=4)
         ttk.Button(actions,text='PCに記録だけ残す',command=keep_local,style='Primary.TButton' if local_only else 'TButton').pack(side='right',padx=4)
+        guide_handoff(app,popup,'record' if local_only else 'send','ファイルを選び、変更の説明・名前・メールを入力します。'+('「PCに記録だけ残す」を押して内容を確認してください。' if local_only else '送信先の作業ルートも選び、送信ボタンを押して内容を確認してください。PCだけに記録することもできます。'))
         popup.grab_set()
         return popup
 
