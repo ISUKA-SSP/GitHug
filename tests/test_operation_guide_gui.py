@@ -58,3 +58,20 @@ class GuideUiTests(unittest.TestCase):
         guide.navigate('steps','copy');guide.tick_now();ticket=begin(self.app,'copy',project)
         self.app.project=None;guide.tick_now();finish(ticket,'old project');self.assertEqual(guide.step,'project');self.assertFalse(guide.completed)
         self.app.project=project;guide.tick_now();guide.close();finish(ticket,'closed');self.assertFalse(self.errors)
+
+    def test_record_confirmation_can_cancel_and_restore_lists_do_not_complete_on_open(self):
+        project,sha=self.fixture();folder=Path(project.snapshot(sha));(folder/'file.txt').write_text('PC edit')
+        self.app.load_folders();item=next(item for item in self.app.folders.get_children() if self.app.folders.item(item,'values')[1]==str(folder))
+        self.app.folders.selection_set(item);self.root.update()
+        guide=open_guide(self.app);guide.navigate('steps','record');guide.tick_now();self.assertEqual(guide.step,'act')
+        with patch('githug.push_ui.messagebox.showinfo'):
+            guide.execute();self.wait()
+        popup=guide.handoff_window;self.assertIsNotNone(popup);self.assertTrue(popup.winfo_exists());self.assertFalse(guide.completed)
+        self.assertEqual(self.root.grab_current(),popup)
+        popup.destroy();self.root.update();guide.tick_now();self.assertIsNone(guide.handoff_window);self.assertEqual(guide.step,'act')
+        self.assertFalse(guide.completed);self.assertFalse(list((project.base/'local-records').glob('*/record.json')))
+        for goal in ('restore-local','restore-backup'):
+            guide.home();guide.navigate('steps',goal);guide.tick_now();guide.execute();self.root.update();guide.tick_now()
+            popup=guide.handoff_window;self.assertIsNotNone(popup);self.assertTrue(popup.winfo_exists());self.assertFalse(guide.completed)
+            popup.destroy();self.root.update();guide.tick_now();self.assertIsNone(guide.handoff_window)
+        self.assertFalse(self.errors)
