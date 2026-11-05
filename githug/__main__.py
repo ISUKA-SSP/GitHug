@@ -10,7 +10,8 @@ import tkinter as tk
 from tkinter import ttk, filedialog, simpledialog
 from .core import Project, ComparisonCancelled
 from .console_panel import ConsolePanel
-from .folder_removal import checked_removal, identity, recycle_registered, hide_missing
+from .folder_removal import checked_removal, identity, recycle_registered, hide_missing, folder_key
+from .folder_batch_ui import remove_selected
 from . import __version__
 from .listing import date_value, visible_rows
 from .theme import apply_dark_theme
@@ -154,6 +155,7 @@ class App:
         self.folder_header.grid(row=0,column=0,sticky='ew',pady=(0,6))
         self.folder_query,self.folder_count = self.folder_header.query,self.folder_header.count
         self.folders = self.table(folders, ('kind', 'path', 'sha', 'created', 'state', 'memo'), ('種類', '保存場所', 'もとにした履歴', 'コピーした日時', '状態', '自分用メモ'), grid_row=1)
+        self.folders.configure(selectmode='extended')
         self.folders.configure(displaycolumns=('sha', 'created', 'state', 'path', 'memo'))
         self.folders.bind('<Button-3>', self.folder_menu)
         self.folders.bind('<ButtonPress-1>', self.folder_press, add='+')
@@ -256,6 +258,10 @@ class App:
     def browse_selected_folder(self, event=None):
         items=self.folders.selection()
         if not items:return
+        if len(items)>1:
+            self.action_guide.set(f'{len(items)} 件を選択中。Ctrlで追加・解除、Shiftで範囲選択できます。右クリックからまとめて整理できます。送信する場合は1フォルダーを選んでください。')
+            if self.folder_browser.root:self.folder_browser.set_folder(None)
+            return
         self.set_action_guide('folder')
         folder=self.folders.item(items[0], 'values')[1]
         if self.folder_browser.root!=folder:self.folder_browser.set_folder(folder)
@@ -405,7 +411,16 @@ class App:
         self.detail()
 
     def render_folders(self):
+        selected={folder_key(self.folders.item(item,'values')[1]) for item in self.folders.selection()}
+        focus=self.folders.focus()
+        focus_path=folder_key(self.folders.item(focus,'values')[1]) if focus and self.folders.exists(focus) else None
+        view=self.folders.yview()
         self.render_rows('folders', self.folders, self.folder_rows, self.folder_query, self.folder_count)
+        restored=[item for item in self.folders.get_children() if folder_key(self.folders.item(item,'values')[1]) in selected]
+        self.folders.selection_set(restored)
+        for item in self.folders.get_children():
+            if folder_key(self.folders.item(item,'values')[1])==focus_path:self.folders.focus(item);break
+        if view:self.folders.yview_moveto(view[0])
 
     def table(self, parent, columns, labels, tree=False, grid_row=None, graph=False):
         frame = ttk.Frame(parent)
@@ -617,6 +632,8 @@ class App:
 
     def edit_folder_note(self):
         items = self.folders.selection()
+        if len(items)>1:
+            messagebox.showinfo('フォルダーを1つ選択','この操作ではフォルダーを1つ選んでください。');return
         if items and self.project:
             folder = self.folders.item(items[0], 'values')[1]
             self.note_dialog('folders', folder, folder)
@@ -684,6 +701,8 @@ class App:
     def work_update_permission(self):
         if self.busy: return
         items = self.folders.selection()
+        if len(items)>1:
+            messagebox.showinfo('フォルダーを1つ選択','この操作ではフォルダーを1つ選んでください。');return
         if not items: return
         folder = self.folders.item(items[0], 'values')[1]
         _, record = record_for_folder(self.project, folder)
@@ -712,6 +731,8 @@ class App:
     def send_selected_folder(self):
         if self.busy or not self.project: return
         items = self.folders.selection()
+        if len(items)>1:
+            messagebox.showinfo('フォルダーを1つ選択','この操作ではフォルダーを1つ選んでください。');return
         if not items:
             messagebox.showinfo('送信元を選択', 'PCのフォルダーを選んでください。')
             return
@@ -730,15 +751,22 @@ class App:
         self.dragging = None
         if self.busy or not self.project or self.folders.identify_region(event.x, event.y) != 'cell': return
         item = self.folders.identify_row(event.y)
+        if getattr(event,'state',0) & 0x5:return
         if item:
-            self.dragging = {'direction': 'push', 'folder': self.folders.item(item, 'values')[1],
+            multiple=len(self.folders.selection())>1 and item in self.folders.selection()
+            self.dragging = {'multiple':multiple,'item':item,'direction': 'push', 'folder': self.folders.item(item, 'values')[1],
                              'project': self.project, 'x': event.x_root, 'y': event.y_root, 'active': False}
+            if multiple:return 'break'
 
     def folder_motion(self, event):
         drag = self.dragging
         if not drag or drag.get('direction') != 'push': return
         if abs(event.x_root - drag['x']) + abs(event.y_root - drag['y']) < 8: return
         drag['active'] = True
+        if drag.get('multiple') or len(self.folders.selection())>1:
+            self.drag_hint.show(event.x_root,event.y_root,'送るフォルダーを1つ選んでください','複数のフォルダーは送信できません',allowed=False)
+            self.status.set('送るフォルダーを1つ選んでください。Ctrlで追加・解除、Shiftで範囲選択できます。')
+            return 'break'
         self.folders.configure(cursor='arrow')
         target = self.window.winfo_containing(event.x_root, event.y_root)
         graph_canvas = getattr(getattr(self.history, 'graph_view', None), 'canvas', None)
@@ -758,6 +786,12 @@ class App:
         self.dragging = None
         self.folders.configure(cursor='')
         if getattr(self, 'drag_hint', None): self.drag_hint.hide()
+        if drag and drag.get('multiple') and not drag['active']:
+            if self.folders.exists(drag['item']):self.folders.selection_set(drag['item']);self.folders.focus(drag['item'])
+            return 'break'
+        if drag and drag.get('direction')=='push' and (drag.get('multiple') or len(self.folders.selection())>1):
+            self.status.set('送るフォルダーを1つ選んでください。複数選択中は送信しません。')
+            return 'break'
         if not drag or drag.get('direction') != 'push' or not drag['active'] or self.busy or self.project is not drag['project']: return
         target = self.window.winfo_containing(event.x_root, event.y_root)
         graph_canvas = getattr(getattr(self.history, 'graph_view', None), 'canvas', None)
@@ -847,6 +881,8 @@ class App:
         if not history or not folders:
             messagebox.showinfo('更新元と更新先を選択', '上で履歴、下で更新先のフォルダーを選んでください。')
             return
+        if len(folders)>1:
+            messagebox.showinfo('更新先を1つ選択','更新するフォルダーを1つ選んでください。');return
         self.begin_update(history[0], folders[0])
 
     def begin_update(self, sha, item):
@@ -1047,6 +1083,8 @@ class App:
         if not items:
             messagebox.showinfo('フォルダーを選択', 'PCのフォルダー一覧から、作業場所を選んでください。')
             return
+        if len(items)>1:
+            messagebox.showinfo('フォルダーを1つ選択','この操作ではフォルダーを1つ選んでください。');return
         item = items[0]
         folder = self.folders.item(item, 'values')[1]
         state = self.folder_state(folder)
@@ -1105,69 +1143,33 @@ class App:
             messagebox.showinfo('フォルダーを開けませんでした', str(exc))
 
     def recycle_selected_folder(self):
-        if self.busy or not self.project:return
-        items=self.folders.selection()
-        if not items:return
-        values=self.folders.item(items[0],'values');folder=values[1]
-        project=self.project
-        projects=[Project(self.config['root'],p['url']) for p in self.config['projects']]
-        try:
-            path=checked_removal(project,folder,projects)
-            expected=identity(path)
-        except (OSError,RuntimeError) as exc:
-            messagebox.showinfo('フォルダーを削除できません',str(exc),parent=self.window);return
-        console=getattr(self,'console',None)
-        if console and console.active:
-            current=Path(console.folder).resolve()
-            if current==path or path in current.parents or current in path.parents:
-                messagebox.showinfo('PowerShellを確認してください','このフォルダーのPowerShellが動いています。処理を終え、PowerShellを終了してからやり直してください。',parent=self.window);return
-        kind='普段編集している作業用フォルダー' if items[0].startswith('work:') else 'コピーしたフォルダー'
-        text=(kind+'をごみ箱へ移動しますか？\n\n'+str(path)+
-              '\n\n中のファイルと手元の編集もまとめて移動します。\nGitHub上の履歴や、更新前のバックアップは削除しません。\n記録は一覧に残り、後から「一覧から取り除く」で整理できます。')
-        if not messagebox.askyesno('フォルダーをごみ箱へ移動',text,parent=self.window,default='no'):return
-        def done(_):
-            self.load_folders()
-            root=self.folder_browser.root
-            if root and (Path(root).resolve()==path or path in Path(root).resolve().parents):self.folder_browser.set_folder(None)
-            self.status.set('ごみ箱へ移動しました。記録は一覧に残しています: '+str(path))
-        self.run('フォルダーをごみ箱へ移動しています…',lambda:recycle_registered(project,path,expected,projects),done)
+        remove_selected(self,'recycle')
 
     def remove_missing_folder(self):
-        if self.busy or not self.project:return
-        items=self.folders.selection()
-        if not items:return
-        folder=self.folders.item(items[0],'values')[1]
-        if self.folder_state(folder)!='削除または移動されています':self.load_folders();return
-        if not messagebox.askyesno('見つからない項目を一覧から取り除く',
-            'この項目を一覧から取り除きますか？\n\n'+folder+'\n\n移動先のファイルは削除しません。GitHubの履歴と自分用メモは残します。',parent=self.window,default='no'):return
-        try:
-            hide_missing(self.project,self.current,folder);self.save();self.load_folders()
-            if self.folder_browser.root==folder:self.folder_browser.set_folder(None)
-            self.status.set('見つからない項目を一覧から取り除きました。')
-        except (OSError,ValueError,RuntimeError) as exc:messagebox.showinfo('一覧を整理できませんでした',str(exc),parent=self.window)
+        remove_selected(self,'hide')
 
     def folder_menu(self, event):
         item = self.folders.identify_row(event.y)
         if not item: return
-        self.folders.selection_set(item)
+        if item not in self.folders.selection():self.folders.selection_set(item)
+        self.folders.focus(item)
+        single=len(self.folders.selection())==1
+        mode='normal' if single else 'disabled'
         menu = tk.Menu(self.window, tearoff=False)
-        menu.add_command(label='フォルダーを開く', command=self.open_folder)
-        menu.add_command(label='VS Codeで開く', command=self.vscode_selected)
-        menu.add_command(label='自分用メモを編集', command=self.edit_folder_note)
-        if item.startswith('work:'):
+        menu.add_command(label='フォルダーを開く', command=self.open_folder,state=mode)
+        menu.add_command(label='VS Codeで開く', command=self.vscode_selected,state=mode)
+        menu.add_command(label='自分用メモを編集', command=self.edit_folder_note,state=mode)
+        if single and item.startswith('work:'):
             folder = self.folders.item(item, 'values')[1]
             _, record = record_for_folder(self.project, folder)
             enabled = record and record.get('kind') == 'work' and record.get('update_allowed')
             menu.add_command(label='同じ場所への更新を無効にする' if enabled else 'この作業フォルダーの更新を有効にする', command=self.work_update_permission)
-        menu.add_command(label='PowerShellで開く／コマンドを実行', command=self.command_dialog)
-        menu.add_command(label='変更を確認してGitHubへ送る', command=self.send_selected_folder)
+        menu.add_command(label='PowerShellで開く／コマンドを実行', command=self.command_dialog,state=mode)
+        menu.add_command(label='変更を確認してGitHubへ送る', command=self.send_selected_folder,state=mode)
         menu.add_separator()
-        folder=self.folders.item(item,'values')[1]
-        state=self.folder_state(folder)
-        if state=='削除または移動されています':
-            menu.add_command(label='一覧から取り除く（ファイルは削除しません）',command=self.remove_missing_folder)
-        else:
-            menu.add_command(label='フォルダーをごみ箱へ移動',command=self.recycle_selected_folder,state='normal' if state=='利用できます' else 'disabled')
+        states=[self.folder_state(self.folders.item(selected,'values')[1]) for selected in self.folders.selection()]
+        menu.add_command(label='フォルダーをごみ箱へ移動',command=self.recycle_selected_folder,state='normal' if '利用できます' in states else 'disabled')
+        menu.add_command(label='見つからない項目を一覧から取り除く',command=self.remove_missing_folder,state='normal' if '削除または移動されています' in states else 'disabled')
         try:
             self.terms.refresh(menu)
             menu.tk_popup(event.x_root, event.y_root)

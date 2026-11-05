@@ -1,7 +1,7 @@
 name: Test Python application
 on:
   push:
-    branches: [main, 'gpt/gittotte-stage1']
+    branches: [main, 'gpt/gittotte-stage1', 'gpt/folder-multiselect']
   workflow_dispatch:
 permissions:
   contents: read

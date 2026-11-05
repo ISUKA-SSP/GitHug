@@ -61,7 +61,8 @@ class PushDragTests(unittest.TestCase):
         window = Mock()
         window.winfo_containing.return_value = history
         app = SimpleNamespace(dragging={'direction':'push','folder':'folder','project':project,'active':True},
-                              project=project,busy=False,folders=Mock(),history=history,window=window,push_ui=Mock())
+                              project=project,busy=False,folders=Mock(),history=history,window=window,push_ui=Mock(),status=Mock())
+        app.folders.selection.return_value=("selected",)
         return app, SimpleNamespace(x_root=100,y_root=200)
 
     def test_drop_on_history_row_passes_branch_hint(self):
@@ -73,6 +74,12 @@ class PushDragTests(unittest.TestCase):
         app,event = self.make()
         App.folder_release(app,event)
         app.push_ui.begin.assert_called_once_with('folder',None)
+
+    def test_multi_selection_never_sends_first_folder(self):
+        app,event=self.make('sha');app.folders.selection.return_value=('one','two')
+        self.assertEqual(App.folder_release(app,event),'break')
+        app.push_ui.begin.assert_not_called();app.folders.selection_set.assert_not_called()
+        app.status.set.assert_called_once()
 
 class DragCancelTests(unittest.TestCase):
     def test_escape_cancels_without_any_transfer(self):
