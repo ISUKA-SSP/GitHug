@@ -1,0 +1,32 @@
+name: Replace tested GitTotte v1.1.0 Windows assets
+on:
+  push:
+    branches: [gpt/replace-windows-v1.1.0]
+permissions:
+  actions: read
+  contents: write
+jobs:
+  replace:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v8.0.2
+        with:
+          name: GitTotte-release-files
+          path: release-files
+          run-id: 42310317519
+          github-token: ${{ github.token }}
+      - name: Verify the tested ZIP
+        working-directory: release-files
+        run: |
+          set -euo pipefail
+          sha256sum -c GitTotte-1.1.0-Windows-x64.sha256
+      - name: Replace the Windows assets and identify their source
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          gh release view v1.1.0 --json body --jq .body > release-notes.md
+          printf '\n### Windows版ZIPの差し替え（2026-11-07）\n\nPowerShell終了後にプロジェクトや履歴を選ぶと WinError 6 が出る問題を修正しました。ZIPとSHA-256チェックサムを更新しています。\n\n[Windows版のビルド元](https://github.com/ISUKA-SSP/GitTotte/commit/3031db589dc8838a81260229b9ea2f60ca176fdb) ／ [Windowsでの検証結果](https://github.com/ISUKA-SSP/GitTotte/actions/runs/42310317519)\n' >> release-notes.md
+          gh release upload v1.1.0 release-files/GitTotte-1.1.0-Windows-x64.zip release-files/GitTotte-1.1.0-Windows-x64.sha256 --clobber
+          gh release edit v1.1.0 --notes-file release-notes.md
