@@ -16,9 +16,13 @@ class GitError(RuntimeError):
     pass
 
 def git(*args, cwd=None, env=None, input_text=None, allowed_returncodes=(0,)):
+    # Git commands run without interactive input. In a Windows GUI the
+    # inherited stdin handle can be invalid after the embedded console closes.
+    stdin_options = ({'stdin': subprocess.DEVNULL} if input_text is None
+                     else {'input': input_text.encode('utf-8')})
     try:
         result = subprocess.run([git_executable(), *map(str, args)], cwd=cwd, capture_output=True,
-                                timeout=180, input=input_text.encode('utf-8') if input_text is not None else None,
+                                timeout=180, **stdin_options,
                                 env={**os.environ, 'GIT_TERMINAL_PROMPT': '0', **(env or {})},
                                 creationflags=subprocess.CREATE_NO_WINDOW if os.name == 'nt' else 0)
     except FileNotFoundError as exc:

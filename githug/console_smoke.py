@@ -3,6 +3,7 @@ import os
 from pathlib import Path
 import subprocess
 import time
+from .core import git
 
 
 def verify_console(app,directory,capture):
@@ -54,5 +55,12 @@ def verify_console(app,directory,capture):
             while panel.session.active and time.monotonic()<until:root.update();time.sleep(.02)
             result['console_stops']=not panel.session.active
         panel.hide()
+    if result['console_stops']:
+        if panel.session.error:
+            raise RuntimeError(panel.session.error)
+        # Project and history selection both launch Git after console teardown.
+        result['git_after_console_stop'] = git('--version').startswith('git version ')
+        if app.project:
+            result['history_after_console_stop'] = bool(app.project.history())
     if not all(result.values()):raise RuntimeError('埋め込みPowerShellの確認に失敗しました: '+str(result))
     return result
