@@ -60,7 +60,6 @@ def verify_console(app,directory,capture):
             raise RuntimeError(panel.session.error)
         # Project and history selection both launch Git after console teardown.
         result['git_after_console_stop'] = git('--version').startswith('git version ')
-        if app.project:
-            result['history_after_console_stop'] = bool(app.project.history())
+        result['history_after_console_stop'] = git('log', '-1', '--format=%s', cwd=directory/'copy').strip() == 'smoke'
     if not all(result.values()):raise RuntimeError('埋め込みPowerShellの確認に失敗しました: '+str(result))
     return result
