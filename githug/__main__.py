@@ -517,7 +517,11 @@ class App:
         if not self.project:
             messagebox.showinfo('プロジェクトを選択', '保存先を変更するプロジェクトを選んでください。')
             return
-        if self.console.active or any(isinstance(widget, tk.Toplevel) for widget in self.window.winfo_children()):
+        other_dialog_open = any(
+            isinstance(widget, tk.Toplevel) and not widget.overrideredirect()
+            for widget in self.window.winfo_children()
+        )
+        if self.console.active or other_dialog_open:
             messagebox.showinfo('保存先を変更', 'PowerShellを終了し、別の画面を閉じてから変更してください。')
             return
         project, registration = self.project, self.current

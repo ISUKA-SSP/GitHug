@@ -78,3 +78,41 @@ class ProjectStorageTests(unittest.TestCase):
             with self.assertRaises(PermissionError):
                 relocate_project(self.project, self.new, [], ())
         self.assertEqual(self.read('records/first.json')['folder'], str(self.copy))
+
+
+class ProjectStorageUiTests(unittest.TestCase):
+    def test_storage_picker_ignores_the_drag_overlay_but_blocks_dialogs(self):
+        import tkinter as tk
+        from githug.__main__ import App
+
+        try:
+            root = tk.Tk()
+        except tk.TclError:
+            self.skipTest('Tk display unavailable')
+        with tempfile.TemporaryDirectory() as directory:
+            try:
+                root._githug_smoke = True
+                root._githug_smoke_dir = directory
+                app = App(root)
+                app.project = Project(directory, 'https://github.com/example/project')
+                app.current = {'url': app.project.url, 'work': []}
+                app.config.update(root=directory, projects=[app.current])
+                root.update()
+                with patch('githug.__main__.filedialog.askdirectory', return_value='') as picker, \
+                     patch('githug.__main__.messagebox.showinfo') as info:
+                    app.choose_root()
+                    picker.assert_called_once()
+                    info.assert_not_called()
+
+                    dialog = tk.Toplevel(root)
+                    try:
+                        picker.reset_mock()
+                        app.choose_root()
+                        picker.assert_not_called()
+                        info.assert_called_once()
+                    finally:
+                        dialog.destroy()
+            finally:
+                for timer in root.tk.splitlist(root.tk.call('after', 'info')):
+                    root.tk.call('after', 'cancel', timer)
+                root.destroy()
