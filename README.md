@@ -8,9 +8,9 @@ GitHubに「取っ手」を付ける、Windows用の無料デスクトップア�
 
 ## ダウンロード・起動
 
-**[Windows版 v1.1.0 をダウンロード](https://github.com/ISUKA-SSP/GitTotte/releases/download/v1.1.0/GitTotte-1.1.0-Windows-x64.zip)**
+**[Windows版 v1.1.1 をダウンロード](https://github.com/ISUKA-SSP/GitTotte/releases/download/v1.1.1/GitTotte-1.1.1-Windows-x64.zip)**
 
-[配布ページ・更新内容](https://github.com/ISUKA-SSP/GitTotte/releases/latest) ／ [SHA-256チェックサム](https://github.com/ISUKA-SSP/GitTotte/releases/download/v1.1.0/GitTotte-1.1.0-Windows-x64.sha256)
+[配布ページ・更新内容](https://github.com/ISUKA-SSP/GitTotte/releases/latest) ／ [SHA-256チェックサム](https://github.com/ISUKA-SSP/GitTotte/releases/download/v1.1.1/GitTotte-1.1.1-Windows-x64.sha256)
 
 Windows 11・64bit向け。Pythonのインストールは不要です。公開プロジェクトの取得に使うGitも同梱しています。
 
@@ -84,6 +84,12 @@ Geminiを使わなくても、操作ガイドを含む基本機能は利用で�
 
 Google側の利用条件・料金・上限が適用されます。説明には誤りが含まれる場合があります。設定・DB・鍵などはファイル名で除外しますが、コード中の秘密情報を完全に検出する機能ではありません。送信前の表示を確認してください。
 
+## PowerShellを使うとき
+
+パネル右端の「✖」は画面を隠す操作です。コマンドはそのまま動きます。「終了」はPowerShellと、そこから起動した処理を終了します。PowerShellで `exit` を実行した場合も、パネルに **「終了しました」** と表示されてから、プロジェクトの保存先変更やアプリの終了へ進んでください。作業場所とコマンドの内容は実行前に確認してください。
+
+初期配布のv1.1.0では、PowerShellを終了したあとにプロジェクトや履歴を選ぶと、Gitが起動できず `WinError 6` が出る場合がありました。v1.1.1にはこの修正が入っています。
+
 ## GitHugからの更新・保存先
 
 アプリを終了し、新しいZIPを別の場所へすべて展開して `GitTotte.exe` を起動してください。旧アプリのフォルダーに上書きする必要はありません。
@@ -92,7 +98,7 @@ Google側の利用条件・料金・上限が適用されます。説明には�
 
 コピーしたファイル・PCの記録・バックアップなどは、アプリで指定した保存先にあります。アプリ本体を削除しても、それらのデータや設定は自動削除しません。
 
-保存先を整理したい場合は、GitTotteを閉じて、`history.git` を含むプロジェクトフォルダーごと移動します。起動後、そのプロジェクトを選び「コピー・履歴の保存先」で移動先のプロジェクトフォルダーを指定してください。フォルダーの記録と自分用メモの紐づけが更新されます。共通の保存先と、他のプロジェクトの設定は引き続き使えます。
+保存先を整理したい場合は、`history.git` を含むプロジェクトフォルダーを丸ごと新しい場所へコピーします。GitTotteで対象プロジェクトを選び「コピー・履歴の保存先」でコピー先を指定してください。先に手動で移動していた場合も、移動先を指定できます。フォルダーの記録と自分用メモの紐づけが更新されます。共通の保存先と、他のプロジェクトの設定は引き続き使えます。
 
 ## LivingAgent
 

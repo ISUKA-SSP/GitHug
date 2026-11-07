@@ -3,7 +3,7 @@ name: Build Windows portable
 on:
   workflow_dispatch:
   push:
-    branches: [gpt/release-v1.1.0, gpt/project-storage-path]
+    branches: [gpt/release-v1.1.1]
 
 permissions:
   contents: read
@@ -44,7 +44,7 @@ jobs:
         shell: pwsh
         run: |
           ./packaging/scan_windows.ps1 -Target dist/GitTotte -Report build/security/current-folder.json
-          ./packaging/scan_windows.ps1 -Target dist/GitTotte-1.1.0-Windows-x64.zip -Report build/security/current-zip.json
+          ./packaging/scan_windows.ps1 -Target dist/GitTotte-1.1.1-Windows-x64.zip -Report build/security/current-zip.json
       - name: Verify EXE with bundled Git
         run: python packaging/verify_bundle.py dist/GitTotte build/windows-smoke.json
       - name: Upload Windows application
@@ -60,8 +60,8 @@ jobs:
         with:
           name: GitTotte-release-files
           path: |
-            dist/GitTotte-1.1.0-Windows-x64.zip
-            dist/GitTotte-1.1.0-Windows-x64.sha256
+            dist/GitTotte-1.1.1-Windows-x64.zip
+            dist/GitTotte-1.1.1-Windows-x64.sha256
           if-no-files-found: error
           retention-days: 30
       - name: Upload build diagnostics
@@ -83,7 +83,7 @@ jobs:
           if-no-files-found: ignore
 
   publish:
-    if: github.event_name == 'push' && github.ref == 'refs/heads/gpt/release-v1.1.0'
+    if: github.event_name == 'push' && github.ref == 'refs/heads/gpt/release-v1.1.1'
     needs: windows
     runs-on: ubuntu-latest
     permissions:
@@ -114,12 +114,12 @@ jobs:
           source=read_report('source-smoke.json')
           frozen=read_report('windows-smoke.json')
           for report in (source,frozen):
-              assert report['version']=='1.1.0' and report['gui_initialized'] and not report['callback_errors']
+              assert report['version']=='1.1.1' and report['gui_initialized'] and not report['callback_errors']
           assert frozen['frozen'] and frozen['git_roundtrip'] and frozen['console_interactive']
           for name in ('current-folder','current-zip'):
               report=read_report(name+'.json')
               assert report['status']=='no_detection'
-          archive=Path('release-files/GitTotte-1.1.0-Windows-x64.zip')
+          archive=Path('release-files/GitTotte-1.1.1-Windows-x64.zip')
           checksum=archive.with_suffix('.sha256').read_text().split()[0]
           assert hashlib.sha256(archive.read_bytes()).hexdigest()==checksum
           PYCODE
@@ -128,4 +128,4 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
         run: |
-          gh release create v1.1.0 release-files/GitTotte-1.1.0-Windows-x64.zip release-files/GitTotte-1.1.0-Windows-x64.sha256 --target "$GITHUB_SHA" --title "GitTotte v1.1.0" --notes-file docs/releases/v1.1.0.md --latest
+          gh release create v1.1.1 release-files/GitTotte-1.1.1-Windows-x64.zip release-files/GitTotte-1.1.1-Windows-x64.sha256 --target "$GITHUB_SHA" --title "GitTotte v1.1.1" --notes-file docs/releases/v1.1.1.md --latest
