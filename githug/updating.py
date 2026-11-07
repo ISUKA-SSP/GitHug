@@ -49,6 +49,9 @@ def checked_folder(project, folder):
     protected = (Path.home().resolve(), Path.cwd().resolve(), project.base.resolve(), project.base.parent.resolve())
     if any(path == p or path in p.parents for p in protected):
         raise UpdateConflict('アプリ本体・保存先全体・ホームフォルダーは更新先にできません。')
+    for other in getattr(project, 'other_bases', ()):
+        if path == other or path in other.parents or other in path.parents:
+            raise UpdateConflict('別のプロジェクトの保存先は更新できません。')
     for name in ('history.git', 'records', 'backups', 'updates', 'local-records', 'outbox'):
         protected_path = (project.base / name).resolve()
         if path == protected_path or protected_path in path.parents:

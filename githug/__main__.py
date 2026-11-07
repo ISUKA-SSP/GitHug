@@ -16,6 +16,7 @@ from .local_records_ui import show_records
 from .route_review_ui import open_route_review
 from .restoration import prepare_backup,prepare_again
 from .restoration_ui import start_restore
+from .project_storage import relocate_project
 from . import __version__
 from .listing import date_value, visible_rows
 from .theme import apply_dark_theme
@@ -505,12 +506,57 @@ class App:
     def choose_root(self):
         if self.busy: return
         if self.config['projects']:
-            messagebox.showinfo('保存先', '登録済みプロジェクトの保存先は維持します。\n' + self.config['root'])
+            self.choose_project_storage()
             return
         folder = filedialog.askdirectory(title='GitTotteの保存先を選択')
         if folder:
             self.config['root'] = folder
             self.save()
+
+    def choose_project_storage(self):
+        if not self.project:
+            messagebox.showinfo('プロジェクトを選択', '保存先を変更するプロジェクトを選んでください。')
+            return
+        if self.console.active or any(isinstance(widget, tk.Toplevel) for widget in self.window.winfo_children()):
+            messagebox.showinfo('保存先を変更', 'PowerShellを終了し、別の画面を閉じてから変更してください。')
+            return
+        project, registration = self.project, self.current
+        old = project.base.resolve()
+        folder = filedialog.askdirectory(
+            parent=self.window,
+            title='移動済みのプロジェクトフォルダーを選択',
+            initialdir=str(old if old.is_dir() else old.parent),
+        )
+        if not folder or Path(folder).resolve() == old:
+            return
+        if not messagebox.askyesno(
+            'プロジェクトの保存先を変更',
+            f'{project.name}\n\n現在：{old}\n新しい場所：{folder}\n\n'
+            'history.git が入っている、移動またはコピー済みのフォルダーを選んでください。'
+            '移動先の記録とメモを新しいパスに付け替えます。',
+            parent=self.window, default='no',
+        ):
+            return
+
+        def done(result):
+            base, work = result
+            before = registration.copy()
+            registration.update(base=str(base), work=work)
+            try:
+                self.save()
+            except OSError as exc:
+                registration.clear()
+                registration.update(before)
+                messagebox.showinfo('保存先を切り替えられませんでした',
+                                    f'{exc}\n設定を保存できませんでした。同じ移動先を選んでやり直してください。')
+                return
+            self.select_project()
+
+        self.run(
+            '移動先の記録とメモを確認しています…',
+            lambda: relocate_project(project, folder, registration.get('work', []), project.other_bases),
+            done,
+        )
 
     def add(self):
         if self.busy: return
@@ -545,7 +591,11 @@ class App:
         self.explanation.choose(None)
         self.set_action_guide('default')
         self.current = self.config['projects'][indices[0]]
-        self.project = Project(self.config['root'], self.current['url'])
+        self.project = Project.registered(self.config['root'], self.current)
+        self.project.other_bases = tuple(
+            Project.registered(self.config['root'], item).base.resolve()
+            for item in self.config['projects'] if item is not self.current
+        )
         self.records = {}
         self.history_rows = []
         self.history_model = HistoryGraph([])

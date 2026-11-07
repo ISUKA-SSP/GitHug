@@ -45,10 +45,15 @@ def validate_url(url):
     return f'https://github.com/{owner}/{name}.git', f'{owner}__{name}'
 
 class Project:
-    def __init__(self, root, url):
+    def __init__(self, root, url, base=None):
         self.url, self.name = validate_url(url)
-        self.base = Path(root) / self.name
+        self.base = Path(base) if base else Path(root) / self.name
         self.cache = self.base / 'history.git'
+        self.other_bases = ()
+
+    @classmethod
+    def registered(cls, root, registration):
+        return cls(root, registration['url'], registration.get('base'))
 
     def refresh(self):
         self.base.mkdir(parents=True, exist_ok=True)

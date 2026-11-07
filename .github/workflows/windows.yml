@@ -3,7 +3,7 @@ name: Build Windows portable
 on:
   workflow_dispatch:
   push:
-    branches: [gpt/release-v1.1.0, gpt/powershell-handle-fix]
+    branches: [gpt/release-v1.1.0, gpt/project-storage-path]
 
 permissions:
   contents: read

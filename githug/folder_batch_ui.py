@@ -39,7 +39,7 @@ def remove_selected(app,operation):
     entries=tuple(tuple(app.folders.item(item,'values')[:2]) for item in items)
     project=app.project
     registration=getattr(app,'current',None)
-    projects=tuple(Project(app.config['root'],p['url']) for p in app.config['projects'])
+    projects=tuple(Project.registered(app.config['root'],p) for p in app.config['projects'])
     console=getattr(app,'console',None)
     console_folder=console.folder if console and console.active else None
     plan=prepare_batch(project,entries,operation,projects,console_folder)
